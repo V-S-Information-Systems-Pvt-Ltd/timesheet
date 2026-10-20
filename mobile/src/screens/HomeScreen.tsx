@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
-import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
-import { formatDatePreview, formatDateRangeShort, formatDateShort } from '../utils/dates';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
+import { formatDatePreview, formatDateRangeShort, formatDayLine } from '../utils/dates';
 
 import { MetricCard } from '../components/MetricCard';
 import { FeatureHub } from '../components/FeatureHub';
@@ -19,6 +19,7 @@ import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
+import { DayGauge, GAUGE_HOURS, formatGaugeHours } from '../components/DayGauge';
 import { MissingDaysStrip } from '../components/MissingDaysStrip';
 import { todayISO } from '@vsis/core';
 import { formatEntryCount } from '../utils/plural';
@@ -28,6 +29,8 @@ interface HomeScreenProps {
   isDarkMode: boolean;
   onViewTimesheets: () => void;
   onLogTime: () => void;
+  /** Opens Log time with the hours prefilled (what is left of today's 8 h). */
+  onLogTimeWithHours?: (hours: number) => void;
   onViewProfile: () => void;
   onViewReports: () => void;
   onViewLeaves: () => void;
@@ -41,6 +44,7 @@ export function HomeScreen({
   isDarkMode: _isDarkMode,
   onViewTimesheets,
   onLogTime,
+  onLogTimeWithHours,
   onViewProfile,
   onViewReports,
   onViewLeaves,
@@ -94,7 +98,7 @@ export function HomeScreen({
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {
       Alert.alert(
-        'Delete Entry',
+        'Delete entry',
         `Are you sure you want to delete the ${entry.hours_worked}h entry on ${formatDatePreview(entry.log_date)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -118,13 +122,23 @@ export function HomeScreen({
     [deleteTimesheet]
   );
 
-  const todayHours = dashboard?.today?.hours ?? 0;
+  const todayHours = Number(dashboard?.today?.hours ?? 0) || 0;
   const weekHours = dashboard?.week?.hours ?? 0;
   const recentEntries = dashboard?.recentEntries ?? [];
+  const todayDate = dashboard?.today?.date ?? todayISO();
+
+  // Part of the day logged: offer to log what is left. Nothing or a full day:
+  // a plain "Log time".
+  const remainder = todayHours > 0 && todayHours < GAUGE_HOURS ? GAUGE_HOURS - todayHours : null;
+  const logLabel = remainder !== null ? `Log ${formatGaugeHours(remainder)} h for today` : 'Log time';
+  const handleLog = () => {
+    if (remainder !== null && onLogTimeWithHours) onLogTimeWithHours(Math.round(remainder * 10) / 10);
+    else onLogTime();
+  };
 
   // `dashboard.week` is a rolling 7-day window ending today (from = today - 6,
   // to = today; see lib/api/v1/services/dashboard.ts), not a calendar week, so
-  // the metric is labelled "Last 7 Days" and shows that exact payload window in
+  // the metric is labelled "Last 7 days" and shows that exact payload window in
   // readable form — machine-facing ISO dates stay out of the UI.
   const weekRangeLabel =
     dashboard?.week?.from && dashboard?.week?.to
@@ -171,14 +185,14 @@ export function HomeScreen({
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: palette.background }]}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: palette.paper }]}>
         <LoadingState message="Loading your dashboard..." palette={palette} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -191,140 +205,114 @@ export function HomeScreen({
           ) : undefined
         }
       >
-        {/* Header */}
-        <View style={styles.headerRow}>
-          {/* Identity block is informational only; the single profile entry point
-              is the labelled "Profile" button below (no duplicate tap target). */}
-          <View style={styles.userInfo}>
-            <Text style={[styles.greeting, { color: palette.muted }]}>Signed in as</Text>
-            <Text numberOfLines={1} style={[styles.userEmail, { color: palette.foreground }]}>
-              {actor?.email ?? 'User'}
-            </Text>
-            {actor?.role ? (
-              <View style={[styles.roleBadge, { backgroundColor: palette.badgeBg }]}>
-                <Text style={[styles.roleText, { color: palette.primary }]}>
-                  {actor.role.toUpperCase()}
-                </Text>
-              </View>
-            ) : null}
+        {/* The day: date, hours so far, gauge, and the one thing to do next. */}
+        <View style={styles.top}>
+          <View style={styles.headerRow}>
+            <View style={styles.userInfo}>
+              <Text style={[styles.dayLine, { color: palette.foreground }]}>
+                {formatDayLine(todayDate)}
+              </Text>
+              {/* Identity is informational only; the single profile entry point
+                  is the labelled "Profile" button (no duplicate tap target). */}
+              <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
+                {actor?.email ?? 'User'}
+              </Text>
+            </View>
+            <PressableScale
+              accessibilityLabel="My profile"
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={onViewProfile}
+              style={[styles.profileButton, { borderColor: palette.controlBorder }]}
+            >
+              <Text style={[styles.profileButtonText, { color: palette.foreground }]}>Profile</Text>
+            </PressableScale>
           </View>
+
+          {isOffline ? (
+            <View
+              accessibilityRole="alert"
+              style={[styles.offlineBanner, { borderColor: palette.hairline }]}
+            >
+              <Text style={[styles.offlineText, { color: palette.muted }]}>
+                Viewing cached data while offline.
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.heroRow}>
+            <Text style={[styles.heroValue, { color: palette.foreground }]}>
+              {formatGaugeHours(todayHours)}
+            </Text>
+            <Text style={[styles.heroUnit, { color: palette.muted }]}>{`of ${GAUGE_HOURS} h today`}</Text>
+          </View>
+          <DayGauge hours={todayHours} palette={palette} />
+
           <PressableScale
-            accessibilityLabel="My profile"
+            accessibilityLabel={logLabel}
             accessibilityRole="button"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={onViewProfile}
-            style={[
-              styles.profileButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
+            onPress={handleLog}
+            style={[styles.primaryActionButton, { backgroundColor: palette.primary }]}
           >
-            <Text style={[styles.profileButtonText, { color: palette.foreground }]}>Profile</Text>
+            <Text style={[styles.primaryActionText, { color: palette.onPrimary }]}>{logLabel}</Text>
           </PressableScale>
         </View>
 
-        {isOffline ? (
-          <View
-            accessibilityRole="alert"
-            style={[styles.offlineBanner, { backgroundColor: palette.card, borderColor: palette.border }]}
-          >
-            <Text style={[styles.offlineText, { color: palette.muted }]}>
-              Viewing cached data while offline.
-            </Text>
-          </View>
-        ) : null}
-
-        <>
-          {/* Metric Cards */}
-          <View style={styles.metricsContainer}>
-            <MetricCard
-              accessibilityLabel={`Today's Hours: ${Number(todayHours).toFixed(1)} hrs. Tap to view timesheets.`}
-              dateLabel={dashboard?.today?.date ? formatDateShort(dashboard.today.date) : 'Today'}
-              isPrimary
-              label="Today's Hours"
-              onPress={onViewTimesheets}
-              palette={palette}
-              value={Number(todayHours).toFixed(1)}
+        <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
+          {effectiveActor?.id && onLogTimeForDate ? (
+            <MissingDaysStrip
+              listLeaves={listLeaves}
+              listTimesheets={listTimesheets}
+              minLogDate={minLogDate}
+              onMonthLoaded={setMonth}
+              onPick={onLogTimeForDate}
+              refreshKey={dashboard}
+              today={todayDate}
+              userId={effectiveActor.id}
             />
+          ) : null}
+
+          <View style={[styles.metricsRow, { borderColor: palette.hairline }]}>
+            {effectiveActor?.id && onLogTimeForDate ? (
+              <MetricCard
+                accessibilityLabel={month ? `This Month: ${month.hours.toFixed(1)} hrs, ${formatEntryCount(month.entries)}.` : 'This Month: unavailable.'}
+                dateLabel={month ? formatEntryCount(month.entries) : undefined}
+                label="This month"
+                palette={palette}
+                value={month ? (Math.round(month.hours * 10) / 10).toFixed(1) : '—'}
+                unit={month ? 'hrs' : ''}
+              />
+            ) : null}
             <MetricCard
               accessibilityLabel={`Last 7 Days: ${Number(weekHours).toFixed(1)} hrs. Tap to view reports.`}
               dateLabel={weekRangeLabel}
-              label="Last 7 Days"
+              label="Last 7 days"
               onPress={onViewReports}
               palette={palette}
               value={Number(weekHours).toFixed(1)}
             />
           </View>
-          {effectiveActor?.id && onLogTimeForDate ? (
-            <>
-              <View style={styles.metricsContainer}>
-                <MetricCard
-                  accessibilityLabel={month ? `This Month: ${month.hours.toFixed(1)} hrs, ${formatEntryCount(month.entries)}.` : 'This Month: unavailable.'}
-                  dateLabel={month ? formatEntryCount(month.entries) : undefined}
-                  label="This Month"
-                  palette={palette}
-                  value={month ? (Math.round(month.hours * 10) / 10).toFixed(1) : '—'}
-                  unit={month ? 'hrs' : ''}
-                />
-              </View>
-              <MissingDaysStrip
-                listLeaves={listLeaves}
-                listTimesheets={listTimesheets}
-                minLogDate={minLogDate}
-                onMonthLoaded={setMonth}
-                onPick={onLogTimeForDate}
-                refreshKey={dashboard}
-                today={dashboard?.today?.date ?? todayISO()}
-                userId={effectiveActor.id}
-              />
-            </>
-          ) : null}
 
-          {/* Quick Actions Primary */}
-          <View style={styles.actionsContainer}>
-            <View style={styles.actionWrapper}>
-              <PressableScale
-                accessibilityLabel="Log time"
-                accessibilityRole="button"
-                onPress={onLogTime}
-                style={[styles.primaryActionButton, { backgroundColor: palette.primary }]}
-              >
-                <Text style={[styles.primaryActionText, { color: palette.onPrimary }]}>+ Log Time</Text>
-              </PressableScale>
-            </View>
-
-            <View style={styles.actionWrapper}>
-              <PressableScale
-                accessibilityLabel="View all timesheets"
-                accessibilityRole="button"
-                onPress={onViewTimesheets}
-                style={[
-                  styles.secondaryActionButton,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
-                  Timesheets →
-                </Text>
-              </PressableScale>
-            </View>
-          </View>
-
-          {/* Feature Hub Buttons */}
           <FeatureHub items={hubItems} palette={palette} />
 
-          {/* Recent Entries Section */}
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
-              Recent Timesheet Entries
-            </Text>
+            <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Recent entries</Text>
+            <PressableScale
+              accessibilityLabel="View all timesheets"
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={onViewTimesheets}
+              scaleTo={1}
+              style={styles.sectionLink}
+            >
+              <Text style={[styles.sectionLinkText, { color: palette.primary }]}>All timesheets</Text>
+            </PressableScale>
           </View>
 
           {recentEntries.length === 0 ? (
             <EmptyState
               icon="clock"
-              message="No recent timesheets logged."
-              actionLabel="+ Log Time"
-              onAction={onLogTime}
+              message="Nothing logged yet. Entries you log will show up here."
               palette={palette}
             />
           ) : (
@@ -339,7 +327,7 @@ export function HomeScreen({
               />
             ))
           )}
-        </>
+        </View>
       </ScrollView>
     </View>
   );
@@ -348,73 +336,74 @@ export function HomeScreen({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centerContent: { justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { padding: spacing.lg },
+  scrollContent: { flexGrow: 1 },
+  top: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   userInfo: { flex: 1, marginRight: spacing.md },
-  greeting: { fontSize: typography.caption, fontWeight: '600', marginBottom: 2 },
-  userEmail: { fontSize: typography.heading, fontWeight: '800' },
-  roleBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: borderRadius.xs,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  roleText: { fontSize: typography.badge, fontWeight: '700' },
+  dayLine: { fontSize: typography.subtitle, fontWeight: '600' },
+  userEmail: { fontSize: typography.caption, marginTop: 2 },
   profileButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    ...shadows.sm,
   },
-  profileButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  profileButtonText: { fontSize: typography.caption, fontWeight: '600' },
   offlineBanner: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     marginBottom: spacing.md,
     padding: spacing.sm,
   },
   offlineText: { fontSize: typography.caption, textAlign: 'center' },
-  metricsContainer: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
-  actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  actionWrapper: {
-    flex: 1,
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, marginBottom: spacing.sm },
+  heroValue: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.xl,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
+  heroUnit: { fontSize: typography.body },
   primaryActionButton: {
     alignItems: 'center',
-    borderRadius: borderRadius.md,
-    width: '100%',
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
-    minHeight: 48,
+    marginTop: spacing.lg,
+    minHeight: 52,
     paddingHorizontal: spacing.md,
-    ...shadows.sm,
   },
-  primaryActionText: {
-    fontSize: typography.body,
-    fontWeight: '700',
+  primaryActionText: { fontSize: typography.body, fontWeight: '600' },
+  sheet: {
+    flexGrow: 1,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
-  secondaryActionButton: {
+  metricsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    width: '100%',
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    ...shadows.sm,
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
-  secondaryActionText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  sectionHeader: { marginBottom: spacing.sm },
-  sectionTitle: { fontSize: typography.heading, fontWeight: '700' },
+  sectionTitle: { fontSize: typography.heading, fontWeight: '600' },
+  sectionLink: { minHeight: 44, justifyContent: 'center' },
+  sectionLinkText: { fontSize: typography.caption, fontWeight: '600' },
 });

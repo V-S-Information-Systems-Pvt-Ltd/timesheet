@@ -13,7 +13,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { todayISO, addDaysISO, formatDatePreview, isValidISODate } from '../utils/dates';
@@ -147,13 +147,13 @@ export function DateChooserModal({
               styles.dialog,
               isWindows && styles.windowsDialog,
               {
-                backgroundColor: palette.card,
-                borderColor: palette.border,
+                backgroundColor: palette.sheet,
+                borderColor: palette.hairline,
               },
             ]}
           >
             {/* Header */}
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
+            <View style={[styles.header, { borderBottomColor: palette.hairline }]}>
               <View style={styles.headerTitles}>
                 <Text style={[styles.title, { color: palette.foreground }]}>{title}</Text>
                 {subtitle ? (
@@ -178,7 +178,7 @@ export function DateChooserModal({
               contentContainerStyle={styles.body}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={[styles.sectionLabel, { color: palette.muted }]}>Quick Options</Text>
+              <Text style={[styles.sectionLabel, { color: palette.muted }]}>Quick options</Text>
               <View style={styles.quickRow}>
                 <PressableScale
                   accessibilityLabel="Choose today"
@@ -189,7 +189,7 @@ export function DateChooserModal({
                     styles.quickChip,
                     {
                       backgroundColor: selectedDate === today ? palette.primary : palette.background,
-                      borderColor: selectedDate === today ? palette.primary : palette.border,
+                      borderColor: selectedDate === today ? palette.primary : palette.controlBorder,
                     },
                   ]}
                 >
@@ -212,7 +212,7 @@ export function DateChooserModal({
                     styles.quickChip,
                     {
                       backgroundColor: selectedDate === yesterday ? palette.primary : palette.background,
-                      borderColor: selectedDate === yesterday ? palette.primary : palette.border,
+                      borderColor: selectedDate === yesterday ? palette.primary : palette.controlBorder,
                     },
                   ]}
                 >
@@ -228,13 +228,13 @@ export function DateChooserModal({
               </View>
 
               {/* Target Date Input */}
-              <Text style={[styles.sectionLabel, { color: palette.muted }]}>Target Date (YYYY-MM-DD)</Text>
+              <Text style={[styles.sectionLabel, { color: palette.muted }]}>Target date (YYYY-MM-DD)</Text>
               <View
                 style={[
                   styles.inputContainer,
                   {
                     backgroundColor: palette.background,
-                    borderColor: validationError ? palette.error : palette.border,
+                    borderColor: validationError ? palette.error : palette.controlBorder,
                   },
                 ]}
               >
@@ -265,13 +265,13 @@ export function DateChooserModal({
             </ScrollView>
 
             {/* Actions Footer */}
-            <View style={[styles.footer, compact && styles.compactFooter, { borderTopColor: palette.border }]}>
+            <View style={[styles.footer, compact && styles.compactFooter, { borderTopColor: palette.hairline }]}>
               <PressableScale
                 accessibilityLabel={cancelAccessibilityLabel}
                 accessibilityRole="button"
                 disabled={isLoading}
                 onPress={onCancel}
-                style={[styles.cancelBtn, compact && styles.compactButton, { borderColor: palette.border }]}
+                style={[styles.cancelBtn, compact && styles.compactButton, { borderColor: palette.controlBorder }]}
               >
                 <Text style={[styles.cancelBtnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
@@ -319,10 +319,9 @@ const styles = StyleSheet.create({
   },
   dialog: {
     maxHeight: '100%',
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.sheet,
     borderWidth: 1,
     overflow: 'hidden',
-    ...shadows.md,
   },
   windowsDialog: {
     width: '100%',
@@ -342,7 +341,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.heading,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   subtitle: {
     fontSize: typography.caption,
@@ -369,10 +368,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   sectionLabel: {
-    fontSize: typography.eyebrow,
+    fontSize: typography.caption,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
     marginBottom: spacing.xs,
     marginTop: spacing.xs,
   },
@@ -386,7 +383,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

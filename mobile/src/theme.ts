@@ -1,9 +1,18 @@
+import { Platform } from 'react-native';
+
 export const colors = {
-  background: '#F8FAFC',
+  // Timecard palette: ink for text and structure, paper behind white sheets.
+  ink: '#13294B',
+  background: '#F3F6F9',
+  paper: '#F3F6F9',
   card: '#FFFFFF',
-  foreground: '#3D3D3D',
-  muted: '#526077',
-  border: '#E2E8F0',
+  sheet: '#FFFFFF',
+  foreground: '#13294B',
+  muted: '#55657E',
+  border: '#E1E7EF',
+  hairline: '#E1E7EF',
+  controlBorder: '#C9D3E0',
+  subtle: '#A3AEBE',
   primary: '#1E73BE',
   primaryDark: '#185B98',
   primaryLight: '#EFF8FF',
@@ -14,17 +23,26 @@ export const colors = {
   infoDark: '#1A43AC',
   infoLight: '#EEF2FD',
   onInfo: '#FFFFFF',
-  darkBackground: '#0F172A',
-  darkForeground: '#F8FAFC',
-  darkMuted: '#94A3B8',
-  darkCard: '#1E293B',
-  darkBorder: '#334155',
-  darkPlaceholder: '#94A3B8',
-  placeholder: '#64748B',
-  error: '#E11D48',
-  errorLight: '#FFF1F2',
-  danger: '#E11D48',
-  dangerLight: '#FFF1F2',
+  logged: '#2E8B57',
+  loggedText: '#1F6B43',
+  loggedTint: '#E3F1E8',
+  leave: '#5B4590',
+  leaveTint: '#ECE7F5',
+  missing: '#EA2B32',
+  missingText: '#C8232A',
+  missingTint: '#FDE7E8',
+  darkBackground: '#0E1A2E',
+  darkForeground: '#EAF0F7',
+  darkMuted: '#9AA8BD',
+  darkCard: '#16243B',
+  darkBorder: '#24344F',
+  darkControlBorder: '#3A4C6B',
+  darkPlaceholder: '#9AA8BD',
+  placeholder: '#667589',
+  error: '#C8232A',
+  errorLight: '#FDE7E8',
+  danger: '#C8232A',
+  dangerLight: '#FDE7E8',
   success: '#10B981',
   successLight: '#ECFDF5',
   warning: '#F59E0B',
@@ -41,42 +59,67 @@ export const spacing = {
 } as const;
 
 export const typography = {
-  hero: 36,
+  hero: 56,
   eyebrow: 12,
-  title: 32,
+  title: 26,
   subtitle: 20,
-  heading: 18,
+  heading: 15,
   body: 15,
-  caption: 13,
+  caption: 12,
   badge: 11,
 } as const;
+
+/** Numeral sizes (Barlow Semi Condensed): day gauge, metric values, list hours, small counts. */
+export const numeralSizes = { xl: 56, lg: 40, md: 26, sm: 20 } as const;
 
 export const borderRadius = {
   xs: 4,
   sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  md: 10,
+  lg: 18,
+  xl: 18,
+  control: 10,
+  sheet: 18,
   round: 9999,
   full: 9999,
 } as const;
 
-export const shadows = {
-  sm: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  md: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
+// Hierarchy comes from paper vs sheet and hairlines, not from shadows.
+const noShadow = {
+  shadowColor: '#000000',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  elevation: 0,
 } as const;
+
+export const shadows = {
+  sm: noShadow,
+  md: noShadow,
+} as const;
+
+export interface FontFamilies {
+  /** Barlow Semi Condensed SemiBold (600). undefined falls back to the system font. */
+  numeral: string | undefined;
+  /** Barlow Semi Condensed Medium (500). */
+  numeralMedium: string | undefined;
+}
+
+export function resolveFonts(os: string): FontFamilies {
+  switch (os) {
+    case 'android':
+    case 'ios':
+      // File basename (Android assets/fonts) == PostScript name (iOS UIAppFonts).
+      return { numeral: 'BarlowSemiCondensed-SemiBold', numeralMedium: 'BarlowSemiCondensed-Medium' };
+    case 'windows':
+      // DirectWrite family names; resolves only if the font is installed on the machine.
+      return { numeral: 'Barlow Semi Condensed SemiBold', numeralMedium: 'Barlow Semi Condensed Medium' };
+    default:
+      return { numeral: undefined, numeralMedium: undefined };
+  }
+}
+
+export const fonts = resolveFonts(Platform.OS);
 
 export interface Palette {
   background: string;
@@ -104,6 +147,18 @@ export interface Palette {
   warningText: string;
   error: string;
   danger: string;
+  paper: string;
+  sheet: string;
+  hairline: string;
+  controlBorder: string;
+  logged: string;
+  loggedText: string;
+  loggedTint: string;
+  leave: string;
+  leaveTint: string;
+  missing: string;
+  missingText: string;
+  missingTint: string;
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -141,7 +196,7 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
 
   const rgb = hexToRgb(cleanPrimary);
   const white = { r: 255, g: 255, b: 255 };
-  const dark = { r: 15, g: 23, b: 42 };
+  const dark = { r: 14, g: 26, b: 46 };
 
   const lightTint = blendRgb(rgb, white, 0.92);
   const darkTint = blendRgb(rgb, dark, 0.75);
@@ -156,11 +211,11 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         card: colors.darkCard,
         border: colors.darkBorder,
         placeholder: colors.darkPlaceholder,
-        errorBoxBg: '#3A1E1E',
+        errorBoxBg: '#3A1D26',
         badgeBg: darkTint,
-        successBoxBg: '#133529',
+        successBoxBg: '#12332A',
         warningBoxBg: '#382B14',
-        infoBoxBg: '#1C2C4E',
+        infoBoxBg: '#1B2D52',
         progressTrack: 'rgba(255, 255, 255, 0.1)',
         divider: colors.darkBorder,
         primary: cleanPrimary,
@@ -168,13 +223,25 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         primaryDark,
         onPrimary: '#FFFFFF',
         info: colors.info,
-        infoLight: '#1C2C4E',
+        infoLight: '#1B2D52',
         success: colors.success,
         warning: colors.warning,
         successText: '#6EE7B7',
         warningText: '#FCD34D',
-        error: colors.error,
-        danger: colors.error,
+        error: '#FF7A80',
+        danger: '#FF7A80',
+        paper: colors.darkBackground,
+        sheet: colors.darkCard,
+        hairline: colors.darkBorder,
+        controlBorder: colors.darkControlBorder,
+        logged: '#4FB381',
+        loggedText: '#7FD3A5',
+        loggedTint: '#14332A',
+        leave: '#B3A2E0',
+        leaveTint: '#2A2347',
+        missing: '#EA2B32',
+        missingText: '#FF8A8F',
+        missingTint: '#3A1D26',
       }
     : {
         background: colors.background,
@@ -188,7 +255,7 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         successBoxBg: colors.successLight,
         warningBoxBg: colors.warningLight,
         infoBoxBg: colors.infoLight,
-        progressTrack: 'rgba(15, 23, 42, 0.06)',
+        progressTrack: 'rgba(19, 41, 75, 0.07)',
         divider: colors.border,
         primary: cleanPrimary,
         primaryLight: lightTint,
@@ -202,6 +269,18 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         warningText: '#92400E',
         error: colors.error,
         danger: colors.error,
+        paper: colors.paper,
+        sheet: colors.sheet,
+        hairline: colors.hairline,
+        controlBorder: colors.controlBorder,
+        logged: colors.logged,
+        loggedText: colors.loggedText,
+        loggedTint: colors.loggedTint,
+        leave: colors.leave,
+        leaveTint: colors.leaveTint,
+        missing: colors.missing,
+        missingText: colors.missingText,
+        missingTint: colors.missingTint,
       };
 }
 

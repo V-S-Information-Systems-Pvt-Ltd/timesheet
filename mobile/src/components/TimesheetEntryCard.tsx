@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { TimesheetEntry } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, type Palette } from '../theme';
 import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
 import { PressableScale } from './PressableScale';
@@ -100,137 +100,119 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
   const cardBody = (
     <>
-      {/* Top Header: Date, Hours, Actions */}
-      <View style={styles.entryHeader}>
-        <View style={styles.entryHeaderLeft}>
-          {isSelectionMode ? (
-            <Pressable
-              accessibilityLabel={`Select entry on ${displayDate}`}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isSelected }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => onToggleSelect?.(entry)}
-              style={styles.checkboxHitArea}
-            >
-              {/* The box stays 22px; the pressable around it carries the target. */}
-              <View
-                style={[
-                  styles.checkbox,
-                  {
-                    borderColor: isSelected ? palette.primary : palette.border,
-                    backgroundColor: isSelected ? palette.primary : palette.card,
-                  },
-                ]}
-              >
-                {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
-              </View>
-            </Pressable>
-          ) : null}
-
-          <Text style={[styles.entryDate, { color: palette.foreground }]}>
-            {displayDate}
-          </Text>
-          {entry.user_email ? (
-            <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
-              {entry.user_email}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.entryHeaderRight}>
-          <View style={[styles.hoursBadge, { backgroundColor: palette.badgeBg }]}>
-            <Text style={[styles.hoursText, { color: palette.primary }]}>
-              {Number(entry.hours_worked).toFixed(1)} hrs
-            </Text>
+      {isSelectionMode ? (
+        <Pressable
+          accessibilityLabel={`Select entry on ${displayDate}`}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isSelected }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => onToggleSelect?.(entry)}
+          style={styles.checkboxHitArea}
+        >
+          {/* The box stays 22px; the pressable around it carries the target. */}
+          <View
+            style={[
+              styles.checkbox,
+              {
+                borderColor: isSelected ? palette.primary : palette.controlBorder,
+                backgroundColor: isSelected ? palette.primary : palette.sheet,
+              },
+            ]}
+          >
+            {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
           </View>
+        </Pressable>
+      ) : null}
 
-          {!isSelectionMode && canDuplicate && onDuplicate ? (
-            <Pressable
-              accessibilityLabel={`Duplicate entry on ${displayDate}`}
-              accessibilityRole="button"
-              disabled={isDuplicating}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => onDuplicate(entry)}
-              style={styles.actionButton}
-            >
-              {isDuplicating ? (
-                <ActivityIndicator color={palette.primary} size="small" />
-              ) : (
-                <Icon color={palette.primary} name="plus" size={16} />
-              )}
-            </Pressable>
-          ) : null}
-
-          {!isSelectionMode && canEdit && onEdit ? (
-            <Pressable
-              accessibilityLabel={`Edit entry on ${displayDate}`}
-              accessibilityRole="button"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => onEdit(entry)}
-              style={styles.actionButton}
-            >
-              <Icon color={palette.foreground} name="edit" size={16} />
-            </Pressable>
-          ) : null}
-
-          {!isSelectionMode && canDelete && onDelete ? (
-            <Pressable
-              accessibilityLabel={`Delete entry on ${displayDate}`}
-              accessibilityRole="button"
-              disabled={isDeleting}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => onDelete(entry)}
-              style={[styles.actionButton, styles.deleteActionButton]}
-            >
-              {isDeleting ? (
-                <ActivityIndicator color={colors.error} size="small" />
-              ) : (
-                <Icon color={colors.error} name="trash" size={16} />
-              )}
-            </Pressable>
-          ) : null}
-        </View>
+      {/* Ledger: hours first, so a column of entries reads as a column of numbers. */}
+      <View style={styles.hoursColumn}>
+        <Text style={[styles.hoursText, { color: palette.foreground }]}>
+          {Number(entry.hours_worked).toFixed(1)}
+        </Text>
+        <Text style={[styles.hoursUnit, { color: palette.muted }]}>hrs</Text>
       </View>
 
-      {/* Project & Activity Badges */}
-      {(entry.project_name || activityLabel) ? (
-        <View style={styles.tagRow}>
-          {entry.project_name ? (
-            <View style={[styles.projectTag, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={palette.primary} name="folder" size={12} style={styles.tagIcon} />
-              <Text numberOfLines={1} style={[styles.projectTagText, { color: palette.primary }]}>
-                {entry.project_name}
-              </Text>
-            </View>
-          ) : null}
-          {activityLabel ? (
-            <View style={[styles.activityTag, { borderColor: palette.border, backgroundColor: palette.card }]}>
-              <Icon color={palette.muted} name="tag" size={12} style={styles.tagIcon} />
-              <Text numberOfLines={1} style={[styles.activityTagText, { color: palette.muted }]}>
-                {activityLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+      <View style={styles.body}>
+        <Text style={[styles.entryDate, { color: palette.foreground }]}>{displayDate}</Text>
+        {entry.user_email ? (
+          <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
+            {entry.user_email}
+          </Text>
+        ) : null}
+        {entry.project_name ? (
+          <Text numberOfLines={1} style={[styles.project, { color: palette.foreground }]}>
+            {entry.project_name}
+          </Text>
+        ) : null}
+        {activityLabel ? (
+          <Text numberOfLines={1} style={[styles.activity, { color: palette.muted }]}>
+            {activityLabel}
+          </Text>
+        ) : null}
+        {entry.ticket_number ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Ticket Number: {entry.ticket_number}</Text> : null}
+        {entry.activity_other ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Other Activity: {entry.activity_other}</Text> : null}
+        {entry.work_done ? (
+          <Text numberOfLines={3} style={[styles.entryNotes, { color: palette.foreground }]}>
+            {entry.work_done}
+          </Text>
+        ) : null}
+      </View>
 
-      {entry.ticket_number ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Ticket Number: {entry.ticket_number}</Text> : null}
-      {entry.activity_other ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Other Activity: {entry.activity_other}</Text> : null}
+      <View style={styles.actions}>
+        {!isSelectionMode && canDuplicate && onDuplicate ? (
+          <Pressable
+            accessibilityLabel={`Duplicate entry on ${displayDate}`}
+            accessibilityRole="button"
+            disabled={isDuplicating}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => onDuplicate(entry)}
+            style={styles.actionButton}
+          >
+            {isDuplicating ? (
+              <ActivityIndicator color={palette.primary} size="small" />
+            ) : (
+              <Icon color={palette.primary} name="plus" size={16} />
+            )}
+          </Pressable>
+        ) : null}
 
-      {/* Work Done Description */}
-      {entry.work_done ? (
-        <Text numberOfLines={3} style={[styles.entryNotes, { color: palette.foreground }]}>
-          {entry.work_done}
-        </Text>
-      ) : null}
+        {!isSelectionMode && canEdit && onEdit ? (
+          <Pressable
+            accessibilityLabel={`Edit entry on ${displayDate}`}
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => onEdit(entry)}
+            style={styles.actionButton}
+          >
+            <Icon color={palette.foreground} name="edit" size={16} />
+          </Pressable>
+        ) : null}
+
+        {!isSelectionMode && canDelete && onDelete ? (
+          <Pressable
+            accessibilityLabel={`Delete entry on ${displayDate}`}
+            accessibilityRole="button"
+            disabled={isDeleting}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => onDelete(entry)}
+            style={[styles.actionButton, styles.deleteActionButton]}
+          >
+            {isDeleting ? (
+              <ActivityIndicator color={palette.missingText} size="small" />
+            ) : (
+              <Icon color={palette.missingText} name="trash" size={16} />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
     </>
   );
 
   const cardStyle = [
-    styles.entryCard,
+    styles.row,
     {
-      backgroundColor: isSelected ? palette.badgeBg : palette.card,
-      borderColor: isSelected ? palette.primary : palette.border,
+      backgroundColor: isSelected ? palette.badgeBg : 'transparent',
+      borderBottomColor: palette.hairline,
     },
   ];
 
@@ -250,7 +232,8 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
       onAccessibilityAction={handleAccessibilityAction}
       onLongPress={onLongPress ? () => onLongPress(entry) : undefined}
       onPress={onPress ? () => onPress(entry) : undefined}
-      style={[cardStyle, styles.cardPressable]}
+      scaleTo={1}
+      style={[cardStyle, styles.rowPressable]}
     >
       {cardBody}
     </PressableScale>
@@ -258,36 +241,24 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 });
 
 const styles = StyleSheet.create({
-  entryCard: {
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-    ...shadows.sm,
+  // Ledger row: no box, a hairline underneath.
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   // PressableScale centres its children unless the layout says otherwise; a
-  // card's rows are full-width.
-  cardPressable: {
-    alignItems: 'stretch',
-  },
-  entryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  entryHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flex: 1,
-    marginRight: spacing.sm,
+  // row's content is full-width and top-aligned.
+  rowPressable: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
   },
   checkboxHitArea: {
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.xs,
   },
   checkbox: {
     width: 22,
@@ -297,28 +268,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  userEmail: {
-    fontSize: typography.caption,
-    marginLeft: spacing.xs,
-    flexShrink: 1,
+  hoursColumn: {
+    width: 56,
+    alignItems: 'flex-start',
   },
-  entryHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  hoursText: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.md,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    lineHeight: 30,
+  },
+  hoursUnit: {
+    fontSize: typography.badge,
+  },
+  body: {
+    flex: 1,
+    marginRight: spacing.sm,
   },
   entryDate: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  hoursBadge: {
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.xs,
-  },
-  hoursText: {
+  userEmail: {
     fontSize: typography.caption,
-    fontWeight: '700',
+  },
+  project: {
+    fontSize: typography.body,
+    marginTop: 2,
+  },
+  activity: {
+    fontSize: typography.caption,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   actionButton: {
     padding: spacing.xs,
@@ -330,41 +314,6 @@ const styles = StyleSheet.create({
   // Keeps the destructive action apart from edit so a mouse click can't hit it by accident.
   deleteActionButton: {
     marginLeft: spacing.md,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-    alignItems: 'center',
-  },
-  tagIcon: {
-    marginRight: 4,
-  },
-  projectTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.xs,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    maxWidth: '65%',
-  },
-  projectTagText: {
-    fontSize: typography.badge,
-    fontWeight: '700',
-  },
-  activityTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.xs,
-    borderWidth: 1,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-    maxWidth: '35%',
-  },
-  activityTagText: {
-    fontSize: typography.badge,
-    fontWeight: '600',
   },
   entryNotes: {
     fontSize: typography.caption,

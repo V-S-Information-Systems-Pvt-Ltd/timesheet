@@ -8,6 +8,7 @@ import {
   formatDatePreview,
   formatDateRangeShort,
   formatDateShort,
+  formatDayLine,
 } from '../src/utils/dates';
 describe('mobile date utilities', () => {
   it('formats dates to ISO date string', () => {
@@ -80,5 +81,16 @@ describe('mobile date utilities', () => {
   it('echoes a malformed single date rather than throwing', () => {
     expect(formatDateShort('')).toBe('');
     expect(formatDateShort('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('formatDayLine', () => {
+  it('reads as weekday, day, month regardless of locale', () => {
+    expect(formatDayLine('2026-10-20')).toBe('Tuesday 20 October');
+    expect(formatDayLine('2026-01-01')).toBe('Thursday 1 January');
+  });
+
+  it('echoes input that is not an ISO date', () => {
+    expect(formatDayLine('not-a-date')).toBe('not-a-date');
   });
 });

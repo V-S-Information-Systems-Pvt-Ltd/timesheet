@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
-import { spacing, useTheme } from '../theme';
+import { useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm, type TimeEntryFormInitialValues } from '../components/TimeEntryForm';
 import type { CreateTimesheetInput } from '../api/contracts';
@@ -54,7 +54,7 @@ export function LogTimeScreen({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.container, { backgroundColor: palette.background }]}
+      style={[styles.container, { backgroundColor: palette.paper }]}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -65,8 +65,7 @@ export function LogTimeScreen({
           backLabel="‹ Cancel"
           onBack={onBack}
           palette={palette}
-          subtitle="Record daily project work hours"
-          title="Log Time"
+          title="Log time"
         />
         <TimeEntryForm
           initialValues={initialValues}
@@ -75,7 +74,7 @@ export function LogTimeScreen({
           onDirtyChange={onDirtyChange}
           onSubmit={handleSubmit}
           scrollViewRef={scrollRef}
-          submitLabel="Save Timesheet"
+          submitLabel="Save entry"
         />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -84,5 +83,5 @@ export function LogTimeScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  scrollContent: { flexGrow: 1 },
 });

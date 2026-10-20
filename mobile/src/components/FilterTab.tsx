@@ -27,14 +27,14 @@ export function FilterTab({
       style={[
         styles.tab,
         active
-          ? [styles.activeTab, { backgroundColor: palette.primary, borderColor: palette.primary }]
-          : [styles.inactiveTab, { backgroundColor: palette.card, borderColor: palette.border }],
+          ? [styles.activeTab, { backgroundColor: palette.foreground, borderColor: palette.foreground }]
+          : [styles.inactiveTab, { backgroundColor: 'transparent', borderColor: palette.controlBorder }],
       ]}
     >
       <Text
         style={[
           styles.tabText,
-          { color: active ? palette.onPrimary : palette.muted },
+          { color: active ? palette.paper : palette.muted },
         ]}
       >
         {label}
@@ -45,7 +45,7 @@ export function FilterTab({
 
 const styles = StyleSheet.create({
   tab: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
     flex: 1,
     alignItems: 'center',
@@ -59,6 +59,6 @@ const styles = StyleSheet.create({
   inactiveTab: {},
   tabText: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

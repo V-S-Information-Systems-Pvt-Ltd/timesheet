@@ -615,7 +615,7 @@ describe('TimesheetListScreen', () => {
     mockSession(mockList);
     const renderer = await renderList();
 
-    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 Days' });
+    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 days' });
     await ReactTestRenderer.act(async () => {
       pastSevenDays.props.onPress();
     });
@@ -669,7 +669,7 @@ describe('TimesheetListScreen', () => {
     );
     expect(visibleTexts(renderer)).toContain('Loading more entries...');
 
-    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 Days' });
+    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 days' });
     await ReactTestRenderer.act(async () => {
       pastSevenDays.props.onPress();
     });
@@ -718,8 +718,16 @@ describe('TimesheetListScreen', () => {
 
       // One header per day, computed from the rows already in memory.
       expect(dayHeaders(renderer)).toHaveLength(2);
-      expect(visibleTexts(renderer)).toContain('9.5 hrs • 2 entries');
-      expect(visibleTexts(renderer)).toContain('4 hrs');
+      // Date on the left, the day's total as a numeral on the right.
+      expect(visibleTexts(renderer)).toContain('9.5');
+      expect(visibleTexts(renderer)).toContain('2 entries');
+      expect(visibleTexts(renderer)).toContain('4');
+      expect(
+        dayHeaders(renderer).map((node) => node.props.accessibilityLabel)
+      ).toEqual([
+        `${formatDatePreview('2026-08-26')}, 9.5 hours`,
+        `${formatDatePreview('2026-08-25')}, 4 hours`,
+      ]);
       expect(visibleTexts(renderer)).toContain(formatDatePreview('2026-08-25'));
 
       // No extra request was issued to build the totals.
@@ -767,7 +775,7 @@ describe('TimesheetListScreen', () => {
       });
 
       // Selection mode is on with exactly this entry selected.
-      expect(visibleTexts(renderer)).toContain('Deselect All');
+      expect(visibleTexts(renderer)).toContain('Deselect all');
       expect(
         renderer.root.findAllByProps({ accessibilityLabel: 'Delete 1 selected entry' }).length
       ).toBeGreaterThan(0);

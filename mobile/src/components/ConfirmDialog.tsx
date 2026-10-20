@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { colors, spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { WindowsModal } from './WindowsModalHost';
 
@@ -50,7 +50,7 @@ export function ConfirmDialog({
         <SafeAreaView style={styles.safeContainer}>
           <View
             accessibilityViewIsModal
-            style={[styles.dialog, { backgroundColor: palette.card, borderColor: palette.border }]}
+            style={[styles.dialog, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
           >
             <Text style={[styles.title, { color: palette.foreground }]}>{title}</Text>
             <Text style={[styles.message, { color: palette.muted }]}>{message}</Text>
@@ -60,7 +60,7 @@ export function ConfirmDialog({
                 accessibilityLabel={cancelLabel}
                 accessibilityRole="button"
                 onPress={onCancel}
-                style={[styles.cancelBtn, { borderColor: palette.border }]}
+                style={[styles.cancelBtn, { borderColor: palette.controlBorder }]}
               >
                 <Text style={[styles.cancelBtnText, { color: palette.foreground }]}>
                   {cancelLabel}
@@ -73,7 +73,7 @@ export function ConfirmDialog({
                 onPress={onConfirm}
                 style={[
                   styles.confirmBtn,
-                  { backgroundColor: destructive ? palette.error : palette.primary },
+                  { backgroundColor: destructive ? colors.error : palette.primary },
                 ]}
               >
                 <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>
@@ -103,18 +103,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dialog: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.sheet,
     borderWidth: 1,
     padding: spacing.lg,
-    ...shadows.md,
   },
   title: {
     fontSize: typography.heading,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   message: {
-    fontSize: typography.caption,
-    lineHeight: 20,
+    fontSize: typography.body,
+    lineHeight: 22,
     marginTop: spacing.sm,
   },
   footer: {
@@ -126,13 +125,13 @@ const styles = StyleSheet.create({
     minHeight: 44,
     flex: 1,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelBtnText: {
-    fontSize: typography.caption,
+    fontSize: typography.body,
     fontWeight: '600',
   },
   confirmBtn: {
@@ -140,13 +139,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
+    fontSize: typography.body,
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import type { WorkspaceBranding } from '../api/contracts';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
@@ -26,7 +26,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: 'home' },
   { key: 'timesheets', label: 'Timesheets', icon: 'clock' },
-  { key: 'log-time', label: 'Log Time', icon: 'plus', isAction: true },
+  { key: 'log-time', label: 'Log time', icon: 'plus', isAction: true },
   { key: 'reports', label: 'Reports', icon: 'reports' },
   { key: 'more', label: 'More', icon: 'more' },
 ];
@@ -47,8 +47,8 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
         style={[
           styles.railContainer,
           {
-            backgroundColor: palette.card,
-            borderRightColor: palette.border,
+            backgroundColor: palette.sheet,
+            borderRightColor: palette.hairline,
           },
         ]}
       >
@@ -114,8 +114,8 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
       style={[
         styles.bottomContainer,
         {
-          backgroundColor: palette.card,
-          borderTopColor: palette.border,
+          backgroundColor: palette.sheet,
+          borderTopColor: palette.hairline,
         },
       ]}
     >
@@ -196,7 +196,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
     width: '100%',
-    ...shadows.md,
   },
   tabRow: {
     flexDirection: 'row',
@@ -223,7 +222,7 @@ const styles = StyleSheet.create({
   iconWrapper: {
     width: 32,
     height: 32,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -244,7 +243,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.sm,
   },
   actionLabel: {
     fontWeight: '600',
@@ -270,7 +268,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     marginBottom: spacing.md,
     gap: spacing.sm,
     minHeight: 44,

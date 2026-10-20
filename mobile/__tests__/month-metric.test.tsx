@@ -39,12 +39,12 @@ describe('Home This Month metric', () => {
       { id: 't1', user_id: 'u1', log_date: '2026-02-02', hours_worked: 8 },
       { id: 't2', user_id: 'u1', log_date: '2026-02-03', hours_worked: 4.5 },
     ] }));
-    expect(texts).toContain('This Month');
+    expect(texts).toContain('This month');
     expect(texts).toContain('12.5 hrs2 entries');
   });
 
   it('shows a dash, not zero, when the month read fails', async () => {
     const texts = await mount(jest.fn().mockRejectedValue(new Error('boom')));
-    expect(texts).toContain('This Month—');
+    expect(texts).toContain('This month—');
   });
 });
