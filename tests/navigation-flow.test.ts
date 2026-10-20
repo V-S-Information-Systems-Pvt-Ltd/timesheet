@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildNavGroups, classifyAccountView, resolveNavTiles, type NavAccess } from '../lib/navigation'
+import { applyMenuView, buildNavGroups, classifyAccountView, menuViewOf, resolveNavTiles, type NavAccess } from '../lib/navigation'
+import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '../app/constants'
 
 const nav = (access: NavAccess, saved: Parameters<typeof resolveNavTiles>[0]['saved'] = { dashboard: null, admin: null }) =>
   buildNavGroups(access, resolveNavTiles({ saved, defaults: null, access }))
@@ -37,6 +38,29 @@ describe('buildNavGroups', () => {
 
   it('adds the team link for managers and team leads', () => {
     expect(nav({ ...base, hierarchy: 'team_lead' }).map(g => g.key)).toEqual(['my', 'team', 'reports'])
+  })
+})
+
+describe('menu views', () => {
+  const everything = { dashboard: DEFAULT_DASHBOARD_LAYOUT, admin: DEFAULT_ADMIN_LAYOUT }
+
+  it('hides saved Team/Reports items and drops a group left empty', () => {
+    const groups = nav(base, { dashboard: { ...DEFAULT_DASHBOARD_LAYOUT, hidden: ['team:tree', 'team:directory', 'reports:compare', 'bogus'] }, admin: null })
+    expect(groups.map(g => g.key)).toEqual(['my', 'reports'])
+    expect(groups[1].items.map(i => i.key)).not.toContain('reports:compare')
+  })
+
+  it('recognises Essentials and Everything, and anything else as custom', () => {
+    expect(menuViewOf(everything, true)).toBe('everything')
+    const essentials = applyMenuView('essentials', everything)
+    expect(menuViewOf(essentials, true)).toBe('essentials')
+    expect(essentials.dashboard.tiles.filter(t => t.enabled).map(t => t.id)).toEqual(['entry-form', 'entries', 'leave'])
+    expect(essentials.admin.tiles.find(t => t.id === 'super-admin')?.enabled).toBe(true)
+    const custom = { ...essentials, dashboard: { ...essentials.dashboard, hidden: [] } }
+    expect(menuViewOf(custom, true)).toBe('custom')
+    // Admin tiles only count for people who can save them.
+    expect(menuViewOf({ ...essentials, admin: DEFAULT_ADMIN_LAYOUT }, false)).toBe('essentials')
+    expect(applyMenuView('everything', essentials)).toEqual(everything)
   })
 })
 

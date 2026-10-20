@@ -17,7 +17,7 @@ export default function ChangePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
-  const nav = useAppNav(profile)
+  const { nav, customizer } = useAppNav(profile)
   const [role, setRole] = useState<UserRole>('user')
   const [isActive, setIsActive] = useState(false)
   const [name, setName] = useState('')
@@ -89,7 +89,7 @@ export default function ChangePasswordPage() {
   if (loading) return <LoadingState fullscreen />
 
   return (
-    <AppShell name={name} email={email} role={role} isActive={isActive} nav={nav} breadcrumb={['Account', 'Change password']} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
+    <AppShell name={name} email={email} role={role} isActive={isActive} nav={nav} customizer={customizer} breadcrumb={['Account', 'Change password']} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200 ring-1 ring-inset ring-primary-100 dark:ring-primary-900">

@@ -58,6 +58,33 @@ const MISSING_LEGEND = [
   ['bg-primary-600', 'Mercantile holiday'],
 ] as const
 
+export interface MissingDayCell extends DayCell { missing?: boolean }
+
+/** Day state shared by the My Missing calendar and the Log Time ribbon. */
+export function missingDayCell(hoursByDate: Map<string, number>, leaveDates: Set<string>, today: string) {
+  const holidays = new Map(holidaysInYear(Number(today.slice(0, 4))).filter(h => h.mercantile).map(h => [h.date, h]))
+  return (iso: string, weekend: boolean): MissingDayCell => {
+    const hours = hoursByDate.get(iso)
+    const holiday = holidays.get(iso)
+    if (holiday) return { className: 'bg-primary-600 font-semibold text-white', title: holiday.name }
+    if (leaveDates.has(iso)) return { className: 'bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100', title: 'Leave' }
+    if (hours) return { className: 'bg-emerald-100 font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100', title: `${hours}h logged` }
+    if (weekend) return { className: 'text-fg-subtle' }
+    if (iso > today) return { className: 'text-fg-muted' }
+    return { className: 'bg-red-100 font-semibold text-red-800 ring-1 ring-red-300 dark:bg-red-900/40 dark:text-red-100 dark:ring-red-800', title: 'Missing', missing: true }
+  }
+}
+
+export function MissingLegend() {
+  return (
+    <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
+      {MISSING_LEGEND.map(([swatch, label]) => (
+        <span key={label} className="inline-flex items-center gap-1.5"><span className={cn('h-3 w-3 rounded', swatch)} /> {label}</span>
+      ))}
+    </div>
+  )
+}
+
 /** Current month: logged, missing and leave days up to today. */
 export function MissingDaysCalendar({ hoursByDate, leaveDates, today, locale }: {
   hoursByDate: Map<string, number>
@@ -67,24 +94,10 @@ export function MissingDaysCalendar({ hoursByDate, leaveDates, today, locale }: 
 }) {
   const year = Number(today.slice(0, 4))
   const month = Number(today.slice(5, 7)) - 1
-  const holidays = new Map(holidaysInYear(year).filter(h => h.mercantile).map(h => [h.date, h]))
-  const cell = (iso: string, weekend: boolean): DayCell => {
-    const hours = hoursByDate.get(iso)
-    const holiday = holidays.get(iso)
-    if (holiday) return { className: 'bg-primary-600 font-semibold text-white', title: holiday.name }
-    if (leaveDates.has(iso)) return { className: 'bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100', title: 'Leave' }
-    if (hours) return { className: 'bg-emerald-100 font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100', title: `${hours}h logged` }
-    if (weekend) return { className: 'text-fg-subtle' }
-    if (iso > today) return { className: 'text-fg-muted' }
-    return { className: 'bg-red-100 font-semibold text-red-800 ring-1 ring-red-300 dark:bg-red-900/40 dark:text-red-100 dark:ring-red-800', title: 'Missing' }
-  }
+  const cell = missingDayCell(hoursByDate, leaveDates, today)
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
-        {MISSING_LEGEND.map(([swatch, label]) => (
-          <span key={label} className="inline-flex items-center gap-1.5"><span className={cn('h-3 w-3 rounded', swatch)} /> {label}</span>
-        ))}
-      </div>
+      <MissingLegend />
       <div className="max-w-md"><MonthGrid year={year} month={month} locale={locale} cell={cell} large /></div>
     </div>
   )

@@ -7,10 +7,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { buildNavGroups, resolveNavTiles, type NavGroup } from '@/lib/navigation'
 import type { AdminDashboardLayout, DashboardLayout, User } from '@/app/types'
+import type { MenuCustomizerConfig } from './menu-customizer'
 
-export function useAppNav(profile: User | null): NavGroup[] {
+export function useAppNav(profile: User | null): { nav: NavGroup[]; customizer?: MenuCustomizerConfig } {
   const [defaults, setDefaults] = useState<{ dashboard: DashboardLayout; admin: AdminDashboardLayout } | null>(null)
   const [superAdmin, setSuperAdmin] = useState(false)
+  const [customizing, setCustomizing] = useState(false)
+  // Menu saved on this page, until the profile is next loaded.
+  const [saved, setSaved] = useState<{ dashboard: DashboardLayout; admin?: AdminDashboardLayout } | null>(null)
   const active = profile?.is_active === true
   const isAdmin = profile?.permission_role === 'admin'
 
@@ -23,9 +27,16 @@ export function useAppNav(profile: User | null): NavGroup[] {
   }, [active, isAdmin])
 
   return useMemo(() => {
-    if (!profile) return []
+    if (!profile) return { nav: [] }
     const access = { permission: profile.permission_role, hierarchy: profile.hierarchy_role, isActive: profile.is_active, superAdmin, scoped: !!profile.scope_departments?.length }
-    const tiles = resolveNavTiles({ saved: { dashboard: profile.dashboard_layout, admin: profile.admin_layout }, defaults, access })
-    return buildNavGroups(access, tiles)
-  }, [profile, defaults, superAdmin])
+    const tiles = resolveNavTiles({
+      saved: { dashboard: saved?.dashboard ?? profile.dashboard_layout, admin: saved?.admin ?? profile.admin_layout },
+      defaults,
+      access,
+    })
+    return {
+      nav: buildNavGroups(access, tiles),
+      customizer: { open: customizing, onOpenChange: setCustomizing, access, tiles, onSaved: next => setSaved(prev => ({ ...prev, ...next })) },
+    }
+  }, [profile, defaults, superAdmin, customizing, saved])
 }

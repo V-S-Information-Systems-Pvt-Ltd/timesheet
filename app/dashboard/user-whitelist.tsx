@@ -10,10 +10,12 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { useAsyncData } from '../hooks'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
-import { Button, Card, Checkbox, EmptyState, Field, Input, RoleBadge, Select, initialsOf } from '@/app/components/ui'
+import { Button, Card, Checkbox, EmptyState, Field, Input, RoleBadge, Select } from '@/app/components/ui'
+import { EditorEmpty, EditorForm, EditorSection, ListToolbar, Monogram, PickList, PickRow, SplitPane } from '@/app/components/workspace'
+import { dashboardHref } from '@/lib/navigation'
 import { Dialog } from '@/app/components/dialog'
 import { toast } from '@/app/components/toast'
-import { IconCheck, IconUsers } from '@/app/components/icons'
+import { IconCheck, IconPlus, IconUsers } from '@/app/components/icons'
 import { leaderUsers, reportToOptions } from '@/lib/hierarchy'
 import { useDepartments } from './department-select'
 
@@ -143,6 +145,7 @@ export default function UserWhitelist({
       subtitle="Activate new accounts, then set each person's department, role and reporting line"
       icon={<IconUsers className="h-4.5 w-4.5" />}
       bodyClassName="p-0"
+      actions={<Button variant="secondary" size="sm" onClick={() => window.history.pushState(null, '', dashboardHref('admin', 'add-user'))}><IconPlus className="h-4 w-4" /> Add person</Button>}
     >
       {inactiveUsers.length > 0 && (
         <section aria-labelledby="inactive-heading" className="border-b border-border bg-warning-surface px-4 py-3">
@@ -170,86 +173,66 @@ export default function UserWhitelist({
         </section>
       )}
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-        <div className="min-w-0 lg:border-r lg:border-border">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-            <Input
-              type="search"
-              placeholder="Search name, email, department or title"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="min-w-48 flex-1"
-              aria-label="Search users"
-            />
-            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="w-auto">
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Not active</option>
-            </Select>
-            <Select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} aria-label="Filter by department" className="w-auto max-w-44">
-              <option value="">All departments</option>
-              <option value={NO_DEPT}>No department</option>
-              {departmentNames.map(n => <option key={n} value={n}>{n}</option>)}
-            </Select>
-          </div>
-          <p className="px-4 pt-2 text-xs text-fg-muted" aria-live="polite">
-            {visibleUsers.length === allUsers.length ? `${allUsers.length} people` : `Showing ${visibleUsers.length} of ${allUsers.length} people`}
-          </p>
+      <SplitPane
+        list={<>
+          <ListToolbar
+            search={search}
+            onSearch={setSearch}
+            placeholder="Search name, email, department or title"
+            shown={visibleUsers.length}
+            total={allUsers.length}
+            noun="people"
+            filters={<>
+              <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="w-auto">
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Not active</option>
+              </Select>
+              <Select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} aria-label="Filter by department" className="w-auto max-w-44">
+                <option value="">All departments</option>
+                <option value={NO_DEPT}>No department</option>
+                {departmentNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </>}
+          />
           {visibleUsers.length === 0 ? (
             <EmptyState title="No one matches these filters" description="Clear the search or pick another status or department." className="py-8" />
           ) : (
-            <ul className="max-h-[38rem] space-y-0.5 overflow-y-auto p-2" aria-label="People">
-              {visibleUsers.map(u => {
-                const isSelected = selected?.id === u.id
-                return (
-                  <li key={u.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(u.id)}
-                      aria-pressed={isSelected}
-                      aria-label={`${u.name || u.email}, ${u.email}`}
-                      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? 'bg-primary-600/10 ring-1 ring-inset ring-primary-600/40' : 'hover:bg-muted'}`}
-                    >
-                      <span aria-hidden className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold ${u.is_active ? 'bg-muted text-fg' : 'bg-warning-surface text-warning-text'}`}>
-                        {initialsOf(u.name, u.email)}
-                        <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-card ${u.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-fg">{u.name || u.email}</span>
-                        <span className={`block truncate text-xs ${isSelected ? 'text-fg' : 'text-fg-muted'}`}>
-                          {[u.title, u.department || 'No department'].filter(Boolean).join(', ')}
-                        </span>
-                      </span>
-                      <RoleBadge role={u.role} className="hidden sm:inline-flex" />
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+            <PickList label="People">
+              {visibleUsers.map(u => (
+                <PickRow
+                  key={u.id}
+                  selected={selected?.id === u.id}
+                  onSelect={() => setSelectedId(u.id)}
+                  label={`${u.name || u.email}, ${u.email}`}
+                  leading={<Monogram name={u.name} email={u.email} tone={u.is_active ? 'neutral' : 'warning'} dot={u.is_active} />}
+                  title={u.name || u.email}
+                  subtitle={[u.title, u.department || 'No department'].filter(Boolean).join(', ')}
+                  trailing={<RoleBadge role={u.role} className="hidden sm:inline-flex" />}
+                />
+              ))}
+            </PickList>
           )}
-        </div>
-
-        <div className="border-t border-border lg:border-t-0">
-          {selected ? (
-            <UserEditor
-              key={editorKey(selected)}
-              user={selected}
-              isSelf={selected.id === selfId}
-              orgAdmin={orgAdmin}
-              scopedAdmin={!!myScope}
-              departmentNames={departmentNames}
-              allDepartmentNames={allDepartmentNames}
-              titles={availableTitles}
-              reportOptions={reportToOptions(selected, allUsers)}
-              noLeaders={leaders.length === 0}
-              onSaved={onChanged}
-              onToggleStatus={() => handleToggleStatus(selected)}
-            />
-          ) : (
-            <p className="p-6 text-sm text-fg-muted">Pick a person to see and change their details.</p>
-          )}
-        </div>
-      </div>
+        </>}
+        detail={selected ? (
+          <UserEditor
+            key={editorKey(selected)}
+            user={selected}
+            isSelf={selected.id === selfId}
+            orgAdmin={orgAdmin}
+            scopedAdmin={!!myScope}
+            departmentNames={departmentNames}
+            allDepartmentNames={allDepartmentNames}
+            titles={availableTitles}
+            reportOptions={reportToOptions(selected, allUsers)}
+            noLeaders={leaders.length === 0}
+            onSaved={onChanged}
+            onToggleStatus={() => handleToggleStatus(selected)}
+          />
+        ) : (
+          <EditorEmpty>Pick a person to see and change their details.</EditorEmpty>
+        )}
+      />
 
       {pendingUser && (
         <Dialog
@@ -352,15 +335,12 @@ function UserEditor({
   }
 
   return (
-    <form className="flex h-full flex-col" onSubmit={e => { e.preventDefault(); void save() }} aria-label={`Details for ${user.email}`}>
-      <header className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-600 text-sm font-semibold text-white">
-          {initialsOf(user.name, user.email)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-semibold text-fg">{user.name || 'No name yet'}</h3>
-          <p className="truncate text-sm text-fg-muted">{user.email}</p>
-        </div>
+    <EditorForm
+      label={`Details for ${user.email}`}
+      leading={<Monogram name={user.name} email={user.email} tone="primary" size="lg" />}
+      title={user.name || 'No name yet'}
+      subtitle={user.email}
+      status={
         <button
           type="button"
           aria-label={`${user.is_active ? 'Active: deactivate' : 'Inactive: activate'} ${user.email}`}
@@ -374,11 +354,13 @@ function UserEditor({
           <span className={`h-1.5 w-1.5 rounded-full ${user.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
           {user.is_active ? 'Active' : 'Not active'}
         </button>
-      </header>
-
-      <div className="flex-1 space-y-6 px-5 py-4">
-        <fieldset className="space-y-3">
-          <legend className="mb-1 text-sm font-semibold text-fg">Who they are</legend>
+      }
+      dirty={dirty}
+      saving={saving}
+      onSubmit={() => void save()}
+      onDiscard={() => setDraft(initial)}
+    >
+        <EditorSection title="Who they are">
           <Field label="Full name">
             <Input value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Jane Doe" required />
           </Field>
@@ -397,11 +379,9 @@ function UserEditor({
               </Select>
             </Field>
           </div>
-        </fieldset>
+        </EditorSection>
 
-        <fieldset className="space-y-3" disabled={isSelf}>
-          <legend className="mb-1 text-sm font-semibold text-fg">What they can do</legend>
-          {isSelf && <p className="text-xs text-fg-muted">You cannot change your own role or reporting line.</p>}
+        <EditorSection title="What they can do" disabled={isSelf} note={isSelf ? 'You cannot change your own role or reporting line.' : undefined}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Permission">
               <Select value={draft.permission} onChange={e => set('permission', e.target.value as PermissionRole)} aria-label={`Permission role for ${user.email}`} className="disabled:opacity-50">
@@ -423,7 +403,7 @@ function UserEditor({
             </Select>
           </Field>
           {noLeaders && <p className="text-xs text-fg-muted">To pick a manager here, first set someone&apos;s position to Manager or Team Lead.</p>}
-        </fieldset>
+        </EditorSection>
 
         {orgAdmin && canHaveScope && !isSelf && (
           <fieldset className="space-y-2 rounded-lg border border-border p-3">
@@ -449,13 +429,6 @@ function UserEditor({
             )}
           </fieldset>
         )}
-      </div>
-
-      <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">
-        {dirty && <span className="mr-auto text-xs text-fg-muted">Unsaved changes</span>}
-        <Button type="button" variant="ghost" disabled={!dirty || saving} onClick={() => setDraft(initial)}>Discard</Button>
-        <Button type="submit" disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save changes'}</Button>
-      </footer>
-    </form>
+    </EditorForm>
   )
 }

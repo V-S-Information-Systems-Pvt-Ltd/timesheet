@@ -12,6 +12,7 @@ import type { NavGroup } from '@/lib/navigation'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { cn } from './cn'
 import { Dialog } from './dialog'
+import { MenuCustomizer, type MenuCustomizerConfig } from './menu-customizer'
 import { Menu } from './menu'
 import { useBranding } from './branding-provider'
 import { BrandMark, IconButton, RoleBadge, ThemeToggle, initialsOf } from './ui'
@@ -39,13 +40,11 @@ function SidebarNav({
   activeNav,
   pathname,
   onNavigate,
-  onCustomize,
 }: {
   groups: NavGroup[]
   activeNav?: string
   pathname: string
   onNavigate: () => void
-  onCustomize?: (group: 'my' | 'admin') => void
 }) {
   const baseId = useId()
   const activeGroup = groups.find(g => g.items.some(i => i.key === activeNav))?.key
@@ -93,7 +92,6 @@ function SidebarNav({
         }
         const expanded = open.has(group.key)
         const panelId = `${baseId}-${group.key}`
-        const customizable = onCustomize && (group.key === 'my' || group.key === 'admin')
         return (
           <li key={group.key}>
             <div className="group/head flex items-center">
@@ -132,17 +130,6 @@ function SidebarNav({
                     </li>
                   )
                 })}
-                {customizable && (
-                  <li className="mt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => { onCustomize(group.key as 'my' | 'admin'); onNavigate() }}
-                      className="flex min-h-9 w-full items-center pl-10 pr-3 text-left text-xs text-fg-subtle transition-colors hover:text-primary-700 dark:hover:text-primary-200"
-                    >
-                      Reorder or hide items…
-                    </button>
-                  </li>
-                )}
               </ul>
             </div>
           </li>
@@ -163,7 +150,7 @@ export function AppShell({
   nav = [],
   activeNav,
   breadcrumb,
-  onCustomize,
+  customizer,
   children,
 }: {
   name?: string
@@ -177,7 +164,8 @@ export function AppShell({
   activeNav?: string
   /** Trail shown in the top bar, e.g. ['Administration', 'Settings']. */
   breadcrumb?: string[]
-  onCustomize?: (group: 'my' | 'admin') => void
+  /** Enables the sidebar's "Customize menu" button and dialog. */
+  customizer?: MenuCustomizerConfig
   children: ReactNode
 }) {
   const displayName = name || email || 'User'
@@ -270,13 +258,22 @@ export function AppShell({
             activeNav={activeNav}
             pathname={pathname}
             onNavigate={() => setDrawerOpen(false)}
-            onCustomize={onCustomize}
           />
         ) : (
           <p className="px-3 text-sm text-fg-muted">Menu appears once your account is active.</p>
         )}
       </nav>
       <div className="border-t border-line px-3 py-3">
+        {customizer && nav.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setDrawerOpen(false); customizer.onOpenChange(true) }}
+            className="flex min-h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          >
+            <IconDashboard className="h-4 w-4" />
+            Customize menu
+          </button>
+        )}
         <button
           type="button"
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
@@ -402,6 +399,8 @@ export function AppShell({
           {children}
         </main>
       </div>
+
+      {customizer && <MenuCustomizer config={customizer} />}
 
       <Dialog
         open={shortcutsOpen}

@@ -21,6 +21,7 @@ import RemindersPanel from './reminders-panel'
 import GlobalRemindersPanel, { GlobalReminderBanners, GlobalRemindersProvider } from './global-reminders-panel'
 import SettingsPanel from './settings-panel'
 import TimeEntryForm, { useBrowserToday } from './time-entry-form'
+import { MissingRibbon } from './missing-ribbon'
 import EntriesTable from './entries-table'
 import AddUserForm from './add-user-form'
 import DepartmentsPanel from './departments-panel'
@@ -29,10 +30,10 @@ import UserWhitelist from './user-whitelist'
 import ReportExport from './report-export'
 import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
-import PanelCustomizer from './panel-customizer'
+import type { MenuCustomizerConfig } from '@/app/components/menu-customizer'
 import { AppShell, Button, Card, EmptyState, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
 import { IconAlert } from '@/app/components/icons'
-import { buildNavGroups, classifyAccountView, dashboardHref, navAccess, navKey, resolveNavTiles, TEAM_VIEWS, type DashboardTab, type TeamViewKey } from '@/lib/navigation'
+import { buildNavGroups, classifyAccountView, navAccess, navKey, resolveNavTiles, TEAM_VIEWS, type DashboardTab, type TeamViewKey } from '@/lib/navigation'
 import { createDashboardAuthHandoff, dashboardPageScope, sameDashboardAuthorization, type DashboardSeed } from '@/lib/dashboard-seed'
 
 const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
@@ -427,8 +428,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   // --- menu (tile) order and visibility --------------------------------------
   // Every tile is its own sidebar item; the saved layouts order and hide them.
-  const [customizing, setCustomizing] = useState<'my' | 'admin' | null>(null)
-  const [customizeNonce, setCustomizeNonce] = useState(0)
+  const [customizing, setCustomizing] = useState(false)
+  const [pickedDate, setPickedDate] = useState<{ date: string }>()
   const navTiles = useMemo(() => resolveNavTiles({
     saved: { dashboard: profile?.dashboard_layout, admin: profile?.admin_layout },
     defaults: defaultLayouts,
@@ -448,19 +449,12 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       ? ['Administration', activePanel ? ADMIN_TILE_LABELS[activePanel as AdminTileId] : '']
       : ['My timesheet', activePanel ? TILE_LABELS[activePanel as TileId] : '']
 
-  const openCustomizer = (group: 'my' | 'admin') => {
-    const tab: DashboardTab = group === 'my' ? 'user' : 'admin'
-    setCustomizeNonce(n => n + 1)
-    setCustomizing(group)
-    window.history.pushState(null, '', dashboardHref(tab, activeTab === tab ? activePanel : undefined))
-  }
-  const handleLayoutSave = (saved: DashboardLayout) => {
-    setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
-    setCustomizing(null)
-  }
-  const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {
-    setProfile(p => (p ? { ...p, admin_layout: saved } : p))
-    setCustomizing(null)
+  const customizer: MenuCustomizerConfig = {
+    open: customizing,
+    onOpenChange: setCustomizing,
+    access: { permission, hierarchy, isActive: true, superAdmin, scoped },
+    tiles: navTiles,
+    onSaved: saved => setProfile(p => (p ? { ...p, dashboard_layout: saved.dashboard, admin_layout: saved.admin ?? p.admin_layout } : p)),
   }
 
   /** Narrow panels read better at a form width than stretched across the page. */
@@ -468,13 +462,28 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   const tileRegistry: Record<TileId, ReactNode> = {
     'entry-form': (
-      <TimeEntryForm
-        today={today}
-        projects={projects}
-        activityTypes={activityTypes}
-        minLogDate={minLogDate}
-        onLogged={handleLogged}
-      />
+      <>
+        {today && profile?.id && (
+          <MissingRibbon
+            userId={profile.id}
+            today={today}
+            minLogDate={minLogDate}
+            refreshKey={monthTotals.totals}
+            onPick={date => {
+              setPickedDate({ date })
+              document.querySelector<HTMLElement>('[data-shortcut="time-entry-form"]')?.scrollIntoView({ block: 'nearest' })
+            }}
+          />
+        )}
+        <TimeEntryForm
+          today={today}
+          projects={projects}
+          activityTypes={activityTypes}
+          minLogDate={minLogDate}
+          onLogged={handleLogged}
+          pickedDate={pickedDate}
+        />
+      </>
     ),
     entries: (
       <EntriesTable
@@ -669,7 +678,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       nav={navGroups}
       activeNav={activeNav}
       breadcrumb={breadcrumb}
-      onCustomize={openCustomizer}
+      customizer={customizer}
     >
       <div className={activeTab === 'team' || WIDE_PANELS.has(activePanel ?? '') ? undefined : 'max-w-4xl'}>
       {dataError && (
@@ -680,33 +689,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       )}
 
       <GlobalReminderBanners />
-
-      {customizing === 'my' && (
-        <div className="mb-6">
-          <PanelCustomizer
-            key={customizeNonce}
-            layout={navTiles.userLayout}
-            labels={TILE_LABELS}
-            defaultLayout={navTiles.dashDefault}
-            persist={dataClient.saveDashboardLayout}
-            onSave={handleLayoutSave}
-            onCancel={() => setCustomizing(null)}
-          />
-        </div>
-      )}
-      {customizing === 'admin' && (
-        <div className="mb-6">
-          <PanelCustomizer
-            key={customizeNonce}
-            layout={navTiles.adminLayout}
-            labels={ADMIN_TILE_LABELS}
-            defaultLayout={navTiles.adminDefault}
-            persist={dataClient.saveAdminLayout}
-            onSave={handleAdminLayoutSave}
-            onCancel={() => setCustomizing(null)}
-          />
-        </div>
-      )}
 
       {showMonthSummary && (
         <>
@@ -767,7 +749,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         <EmptyState
           title="Nothing to show here"
           description="Every item in this section is hidden. Choose which ones to show."
-          action={<Button variant="secondary" onClick={() => openCustomizer(activeTab === 'admin' ? 'admin' : 'my')}>Choose items</Button>}
+          action={<Button variant="secondary" onClick={() => setCustomizing(true)}>Customize menu</Button>}
         />
       ))}
       </div>

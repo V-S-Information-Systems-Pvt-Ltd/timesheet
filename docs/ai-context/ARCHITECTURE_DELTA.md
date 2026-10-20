@@ -1,5 +1,12 @@
 # Architecture Delta
 
+## 2026-10-20 — One menu customizer with views
+
+- `DashboardLayout` gains optional `hidden: string[]`: Team/Reports nav keys (`team:*`, `reports:*`, listed in `HIDEABLE_NAV_KEYS` in `lib/navigation.ts`) hidden from the sidebar. `PATCH /api/v1/layout/web` accepts it for the dashboard target (`browserLayoutSchema`, max 20 keys); `saveDashboardLayout` rejects unknown keys and de-duplicates. Stored in the existing `profiles.dashboard_layout` jsonb; no migration. Admin layouts are unchanged.
+- Views (`applyMenuView` / `menuViewOf`): Essentials and Everything are presets; any other combination reads as Custom. Nothing extra is stored.
+- The per-group "Reorder or hide items" links and the in-page `PanelCustomizer` for a user's own menu are replaced by `app/components/menu-customizer.tsx`, opened from the sidebar footer through `AppShell`'s `customizer` prop. `PanelCustomizer` remains for the super-admin default layouts.
+- Hiding is menu-only: hidden pages stay reachable by URL.
+
 ## 2026-10-20 — Department boundary for admins and COs
 
 - Migration `0045_departments.sql`: new `public.departments` list (unique trimmed `name`), seeded from existing `profiles.department`; new `profiles.scope_departments text[]` (null/empty = unrestricted). `profiles.department` stays free text but writes must name a listed department (or '').

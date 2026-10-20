@@ -73,7 +73,7 @@ function ReportsPage() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
-  const nav = useAppNav(profile)
+  const { nav, customizer } = useAppNav(profile)
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [timesheetsLoading, setTimesheetsLoading] = useState(true)
@@ -541,6 +541,7 @@ function ReportsPage() {
       role={role}
       isActive={profile.is_active}
       nav={nav}
+      customizer={customizer}
       activeNav={reportNavKey(tab)}
       breadcrumb={['Reports', tabLabel]}
       onLogout={handleLogout}

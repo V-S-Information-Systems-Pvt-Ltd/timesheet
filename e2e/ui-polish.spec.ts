@@ -286,24 +286,32 @@ test.describe('UI polish with browser fixtures', () => {
     await page.unroute(failPattern)
     await retry.click()
     await expect(page.getByText('Could not load: Fixture load failure')).toHaveCount(0)
-    await expect(page.getByRole('cell', { name: 'Development', exact: true })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Activities' }).getByText('Development', { exact: true })).toBeVisible()
   })
 
-  test('the panel customizer is accessible and announces reorders', async ({ page }) => {
-    // The customizer is opened from the group's "Reorder or hide items…" entry in the sidebar.
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: /Reorder or hide items/ }).first().click()
-    await expect(page.getByRole('heading', { name: 'Customize Panels', exact: true })).toBeVisible()
+  test('the menu customizer is accessible, applies views and announces reorders', async ({ page }) => {
+    // One "Customize menu" button in the sidebar footer covers every menu group.
+    await page.getByRole('button', { name: 'Customize menu', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Customize menu' })
+    await expect(dialog).toBeVisible()
     // The layout title streams in after the branding read; scan once it lands.
     await expect(page).toHaveTitle(/\S/)
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze())
       .violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
       .map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) }))
     expect(violations).toEqual([])
-    const customizer = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Customize Panels', exact: true }) })
-    const firstRow = customizer.locator('li[aria-keyshortcuts]').first()
-    await firstRow.focus()
-    await page.keyboard.press('ArrowDown')
-    await expect(customizer.getByRole('status')).toHaveText(/moved to position/)
+    // Essentials trims Team and Reports; editing an item makes the view Custom.
+    await dialog.getByRole('radio', { name: /Essentials/ }).check()
+    await expect(dialog.getByRole('checkbox', { name: 'Compare', exact: true })).not.toBeChecked()
+    await expect(dialog.getByRole('checkbox', { name: 'My Missing', exact: true })).toBeChecked()
+    await dialog.getByRole('checkbox', { name: 'Compare', exact: true }).check()
+    await expect(dialog.getByRole('radio', { name: /Custom/ })).toBeChecked()
+    await dialog.getByRole('button', { name: 'Move Log Time down' }).click()
+    await expect(dialog.getByRole('status')).toHaveText(/Log Time moved to position 2/)
+    // Cancel leaves the saved menu untouched.
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Compare', exact: true })).toBeAttached()
   })
 
   test('CSV import asks for confirmation before importing instead of firing on select', async ({ page }) => {
@@ -334,11 +342,12 @@ test.describe('UI polish with browser fixtures', () => {
     await page.goto('/dashboard?tab=admin&panel=activity-types')
     await page.setViewportSize({ width: 390, height: 844 })
     const activity = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Activity Types', exact: true }) })
-    await expect(activity.getByRole('button', { name: 'Rename', exact: true })).toBeVisible()
+    await expect(activity.getByRole('list', { name: 'Activities' })).toBeVisible()
     await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))))
     expect(await activity.evaluate(element => getComputedStyle(element).transform)).toBe('none')
-    await activity.getByRole('button', { name: 'Rename', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'Rename Activity Type' })
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
+    await page.getByRole('dialog', { name: 'Navigation menu' }).getByRole('button', { name: 'Customize menu', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Customize menu' })
     await expect(dialog).toBeVisible()
     const backdrop = dialog.locator('..')
     await expect.poll(() => backdrop.evaluate(element => {
