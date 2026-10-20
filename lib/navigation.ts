@@ -80,7 +80,7 @@ export function resolveNavTiles(input: {
   saved: { dashboard: DashboardLayout | null | undefined; admin: AdminDashboardLayout | null | undefined }
   defaults: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null
   access: NavAccess
-}): { userTiles: TileId[]; adminTiles: AdminTileId[]; dashDefault: DashboardLayout; adminDefault: AdminDashboardLayout; userLayout: DashboardLayout; adminLayout: AdminDashboardLayout } {
+}): { userTiles: TileId[]; adminTiles: AdminTileId[]; hidden: string[]; dashDefault: DashboardLayout; adminDefault: AdminDashboardLayout; userLayout: DashboardLayout; adminLayout: AdminDashboardLayout } {
   const { saved, defaults, access } = input
   const dashDefault = completeLayout(defaults?.dashboard, DEFAULT_DASHBOARD_LAYOUT)
   const userLayout = completeLayout(saved.dashboard, dashDefault)
@@ -95,6 +95,7 @@ export function resolveNavTiles(input: {
   return {
     userTiles: resolveLayout(userLayout, dashDefault) as TileId[],
     adminTiles: (resolveLayout(adminLayout, adminDefault) as AdminTileId[]).filter(id => adminTileAllowed(id, access)),
+    hidden: (saved.dashboard?.hidden ?? []).filter(key => HIDEABLE_NAV_KEYS.includes(key)),
     dashDefault,
     adminDefault,
     userLayout,
@@ -129,9 +130,55 @@ export function reportNavKey(tab: string): string {
   return `reports:${tab}`
 }
 
-export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; adminTiles: AdminTileId[] }): NavGroup[] {
+/** Team and Reports items a user may hide from their menu (stored in `DashboardLayout.hidden`). */
+export const HIDEABLE_NAV_KEYS: string[] = [
+  ...TEAM_VIEWS.map(v => navKey('team', v.key)),
+  ...REPORT_TABS.map(t => reportNavKey(t.key)),
+]
+
+// --- menu views ---------------------------------------------------------------
+// A view is a preset of which menu items show. Anything else is "custom".
+
+export type MenuView = 'essentials' | 'everything' | 'custom'
+
+const ESSENTIAL_USER_TILES: TileId[] = ['entry-form', 'entries', 'leave']
+const ESSENTIAL_ADMIN_TILES: AdminTileId[] = ['user-whitelist', 'add-user', 'project-manager', 'leave-admin', 'report-export', 'super-admin']
+const ESSENTIAL_SHOWN = new Set(['team:tree', 'reports:myhours', 'reports:missing'])
+
+export interface MenuDraft {
+  dashboard: DashboardLayout
+  admin: AdminDashboardLayout
+}
+
+/** Applies a preset to the draft, keeping the item order. */
+export function applyMenuView(view: Exclude<MenuView, 'custom'>, draft: MenuDraft): MenuDraft {
+  const all = view === 'everything'
+  return {
+    dashboard: {
+      tiles: draft.dashboard.tiles.map(t => ({ ...t, enabled: all || ESSENTIAL_USER_TILES.includes(t.id) })),
+      ...(all ? {} : { hidden: HIDEABLE_NAV_KEYS.filter(key => !ESSENTIAL_SHOWN.has(key)) }),
+    },
+    admin: { tiles: draft.admin.tiles.map(t => ({ ...t, enabled: all || ESSENTIAL_ADMIN_TILES.includes(t.id) })) },
+  }
+}
+
+/** Which preset the draft matches; admin tiles count only when the user can save them. */
+export function menuViewOf(draft: MenuDraft, includeAdmin: boolean): MenuView {
+  const same = (a: { tiles: { enabled: boolean }[] }, b: { tiles: { enabled: boolean }[] }) =>
+    a.tiles.every((t, i) => t.enabled === b.tiles[i]?.enabled)
+  const sameHidden = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every(k => b.includes(k))
+  for (const view of ['essentials', 'everything'] as const) {
+    const preset = applyMenuView(view, draft)
+    if (same(draft.dashboard, preset.dashboard) && sameHidden(draft.dashboard.hidden, preset.dashboard.hidden)
+      && (!includeAdmin || same(draft.admin, preset.admin))) return view
+  }
+  return 'custom'
+}
+
+export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; adminTiles: AdminTileId[]; hidden?: string[] }): NavGroup[] {
   if (!access.isActive) return []
   const can = navAccess(access)
+  const shown = (item: NavItem) => !tiles.hidden?.includes(item.key)
   const groups: NavGroup[] = [{
     key: 'my',
     label: 'My timesheet',
@@ -141,13 +188,13 @@ export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; 
   groups.push({
     key: 'team',
     label: 'Team',
-    items: TEAM_VIEWS.map(v => ({ key: navKey('team', v.key), label: v.label, href: `${dashboardHref('team')}&view=${v.key}` })),
+    items: TEAM_VIEWS.map(v => ({ key: navKey('team', v.key), label: v.label, href: `${dashboardHref('team')}&view=${v.key}` })).filter(shown),
   })
   groups.push({
     key: 'reports',
     label: 'Reports',
     items: REPORT_TABS.filter(t => !('reportRole' in t) || can.canGenerateReports)
-      .map(t => ({ key: reportNavKey(t.key), label: t.label, href: `/reports?tab=${t.key}` })),
+      .map(t => ({ key: reportNavKey(t.key), label: t.label, href: `/reports?tab=${t.key}` })).filter(shown),
   })
   if (can.showAdminPanel && tiles.adminTiles.length > 0) {
     groups.push({
@@ -156,5 +203,6 @@ export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; 
       items: tiles.adminTiles.map(id => ({ key: navKey('admin', id), label: ADMIN_TILE_LABELS[id], href: dashboardHref('admin', id) })),
     })
   }
-  return groups
+  // A group whose items are all hidden drops out (My timesheet keeps its empty state).
+  return groups.filter(g => g.key === 'my' || g.items.length > 0)
 }

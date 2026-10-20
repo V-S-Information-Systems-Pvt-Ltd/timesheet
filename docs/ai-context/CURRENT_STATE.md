@@ -11,8 +11,6 @@ backup/bundle portability, the offline queue and web/mobile forms. Rollout is
 gated by the server-owned `TIMESHEET_CLASSIFICATION_V2` flag. See the 2026-10-05
 entry in `ARCHITECTURE_DELTA.md`.
 
-Snapshot date (prior): 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool isolation are committed on `arch/architecture-simplification` at checkpoint `d9f8b80`. Phase 3 implementation is complete in the working tree: browser data/authentication, dashboard actions, raw application fetches, administration, layouts/branding and import/export/backup flows use versioned transports through the browser facades. Legacy server aliases remain only for deployment rollback and require post-rollout evidence before deletion.
-
 Phase 4 (provider retirement) is complete as of 2026-10-16: see the entry in `ARCHITECTURE_DELTA.md`.
 
 ## Purpose and direction
@@ -49,35 +47,12 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 - Runtime imported-history compatibility lives in
   `lib/idempotency/portable-retry.ts` and is covered by the application test/coverage gates.
 
-## Repository intelligence
-
-- Understand Anything graph: `.ua/knowledge-graph.json`; metadata analysis commit `55545e77b7b655b0f72e0b5d889ee61ada6d87e7`.
-- Structural validation on 2026-09-17 found 1,867 nodes, 3,601 edges, 10 layers, and 9 tour steps with no dangling edge, layer, or tour references. The graph is stale relative to the current source: 84 non-`.ua` files differ from its metadata commit. Treat it as navigation evidence only until an incremental refresh is run.
-- Atlas: available as `atlas`; use a 2k-token map first for unfamiliar work.
-- Serena: project config in `.serena/project.yml`, TypeScript LSP; symbol/reference lookup validated.
-- RTK: available as `rtk`; use it for noisy supported CLI commands where full raw output is not required.
-
 ## Current architecture issues / unknowns
 
 No new active architecture defect is asserted by this setup task. The material unresolved operational unknowns are environment-specific: which migration versions are applied to each deployed database, production proxy/secret values, and whether future repository migration files have been deployed. Resolve those from the target environment rather than inferring them from Git.
-
-## Last meaningful architecture update
-
-The architecture-simplification branch removes the global repository
-facade in favor of the existing narrow domain ports/composition modules (Phase 1),
-then separates the operator migration package from request-time portable retry
-compatibility (Phase 2). Phase 3 migrates all production browser data/authentication,
-dashboard action callers and raw application fetches to versioned transports, with legacy data/auth aliases
-and Server Actions retained solely for rollout rollback. mobile bearer contracts and persistence/retry behavior remain compatible. See
-`docs/ai-context/ARCHITECTURE_DELTA.md`, the phase decision packets, and the Phase 3
-transport matrix for verified boundaries, remaining slices and acceptance evidence.
-
-## Working-tree note
-
-`.ua/` is ignored local Understand Anything state. Preserve its graph, metadata, fingerprints, and any intermediate diagnostics unless a separate task explicitly owns a refresh or cleanup.
 
 ## Verification entry points
 
 Root scripts are authoritative in `package.json`: `lint`, `typecheck`, `test`, `test:coverage`, `build`, `e2e`, `a11y`, database integration workflows, benchmark, and k6 load test. Mobile workflows are defined by `mobile/package.json`.
 
-Evidence: `package.json`, `README.md`, `AGENTS.md`, `.ua/meta.json`, `git diff 55545e7...HEAD -- . ':(exclude).ua/**'`.
+Evidence: `package.json`, `README.md`, `AGENTS.md`.

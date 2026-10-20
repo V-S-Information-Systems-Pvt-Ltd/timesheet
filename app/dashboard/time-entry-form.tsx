@@ -30,6 +30,8 @@ interface TimeEntryFormProps {
   onLogged: (entry?: OptimisticTimesheet) => void
   collapsible?: boolean
   initialDraft?: Timesheet
+  /** A date picked elsewhere (the month ribbon); a new object re-applies it. */
+  pickedDate?: { date: string }
 }
 
 export default function TimeEntryForm(props: TimeEntryFormProps) {
@@ -48,13 +50,19 @@ function LocalTimeEntryForm({
   collapsible = false,
   today,
   initialDraft,
+  pickedDate,
 }: TimeEntryFormProps) {
   const [classification, setClassification] = useState(() => initialDraft ? classificationFromEntry(initialDraft) : { ...emptyClassification })
   const [hours, setHours] = useState(initialDraft ? String(initialDraft.hours_worked) : '')
   const [workDone, setWorkDone] = useState(initialDraft?.work_done ?? '')
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
-  const [logDate, setLogDate] = useState(initialDraft?.log_date ?? today)
+  const [logDate, setLogDate] = useState(initialDraft?.log_date ?? pickedDate?.date ?? today)
+  const [appliedPick, setAppliedPick] = useState(pickedDate)
+  if (pickedDate !== appliedPick) {
+    setAppliedPick(pickedDate)
+    if (pickedDate) setLogDate(pickedDate.date)
+  }
 
   const [busy, setBusy] = useState(false)
   const [recentWork, setRecentWork] = useState<CachedWorkEntry[]>([])

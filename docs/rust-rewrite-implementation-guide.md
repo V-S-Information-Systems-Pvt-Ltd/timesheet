@@ -49,7 +49,7 @@ Current source also includes classification v2, historical rows, global-reminder
 
 Authoritative entry points:
 
-- [Current state](ai-context/CURRENT_STATE.md), [architecture](ai-context/ARCHITECTURE.md), [architecture delta](ai-context/ARCHITECTURE_DELTA.md), and [browser transport matrix](ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md).
+- [Current state](ai-context/CURRENT_STATE.md), [architecture](ai-context/ARCHITECTURE.md), [architecture delta](ai-context/ARCHITECTURE_DELTA.md), and [browser transport matrix](ai-context/archive/PHASE3_TRANSPORT_CONTRACT_MATRIX.md).
 - [Migration runner](../db/migrate-runner.mjs), [native integrity trigger](../db/migrations/0015_data_integrity_and_concurrency.sql), and [native timesheet adapter](../lib/db/native/timesheets.ts).
 - [v1 HTTP guards](../app/api/v1/_http.ts), [native password formats](../lib/auth/password.ts), [web JWT implementation](../lib/auth/jwt.ts), and [mobile token implementation](../lib/auth/mobile-tokens.ts).
 - [Contract exports](../packages/contracts/src/index.ts), [identity schemas](../packages/contracts/src/identity.ts), [portable retry](../lib/idempotency/portable-retry.ts), and [backup parser](../lib/backup.ts).

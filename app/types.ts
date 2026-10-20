@@ -61,6 +61,8 @@ export interface DashboardTileSetting {
 export interface DashboardLayout {
   /** Ordered tile list; disabled tiles stay in place and are hidden. */
   tiles: DashboardTileSetting[]
+  /** Team/Reports menu items (nav keys such as 'reports:compare') hidden from the sidebar. */
+  hidden?: string[]
 }
 
 /** Admin-panel tiles that can be enabled/disabled and reordered. */

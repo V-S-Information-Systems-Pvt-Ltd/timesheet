@@ -22,42 +22,21 @@ Next.js 16 App Router timesheet app on self-hosted PostgreSQL with in-app scrypt
 - Preserve identifiers, paths, public contracts, and established conventions. Communicate in the user's language.
 - Report the outcome, changed files, and verification concisely. Distinguish checks that passed from those skipped, unavailable, or failing.
 
-## Codebase context and token-efficiency policy
+## Context retrieval
 
-Use persistent repository knowledge to navigate; verify implementation details in the current source.
+Read as little as needed. Source code is authoritative over every index and doc.
 
-### Discovery and scope
+1. Tiny, already-localized task: open the target file or `git diff` directly and stop here.
+2. Otherwise read `docs/ai-context/CURRENT_STATE.md`, then only the one domain file in `docs/ai-context/` that matches the task (see its `README.md`).
+3. For symbols, callers, and impact, use your agent's code index (Serena in Codex, jCodeMunch in Claude Code) or Atlas (`atlas . --budget 2048`) before reading whole files. Read targeted snippets, then full files only if needed.
+4. `.ua/knowledge-graph.json` (Understand Anything) is for broad onboarding, cross-cutting, or impact questions only. Before relying on it, compare `gitCommitHash` in `.ua/meta.json` against `git diff --name-only <hash> HEAD` for the paths you care about; treat changed paths as unverified. Refresh it incrementally only when asked.
+5. Skip `node_modules`, `.next`, `coverage`, `test-results`, `.claude/worktrees`, lockfiles, and generated output in searches.
 
-- For architecture and dependency discovery, begin with `docs/ai-context/` plus Atlas for a bounded structural map, then use Serena for live symbol/reference retrieval. Use the existing knowledge graph or semantic index when the question remains cross-cutting or semantic after those narrower steps. This repository's graph is `.ua/knowledge-graph.json`; legacy projects may use `.understand-anything/knowledge-graph.json`. Use the directory already configured for the project.
-- For a task already scoped to known files, begin with those files or the current diff and consult the graph when dependencies or impact need clarification.
-- Prefer context in this order: current diff/task-specific files, `docs/ai-context/`, Atlas, Serena, targeted source inspection, Understand Anything for unresolved cross-cutting semantics/impact, then broader searches or full-file reads when evidence requires them.
-- Query relevant graph nodes, summaries, and relationships without loading the whole graph. Identify files, symbols, modules, callers, dependencies, routes, persistence boundaries, configuration, architectural layers, and tests needed for the task.
-- Read the relevant source before editing. Source code is authoritative when it disagrees with the index; an absent graph edge does not prove that a dependency is absent.
-- Scope discovery to the relevant application, package, or subsystem while retaining necessary runtime and API dependencies. Respect the configured analysis exclusions, currently `.ua/.understandignore`.
-- Exclude dependencies, generated output, build artifacts, caches, coverage, and vendored code from broad scans. Focused inspection is appropriate when needed for framework documentation, generated contracts, or debugging.
-- Reuse retrieved context and batch independent searches. Expand the working set only when the available evidence is insufficient.
+Output hygiene: prefer `rtk <cmd>` for noisy CLI output (see `RTK.md`). Report a concise failure digest, not full logs. Do not reprint successful build route tables.
 
-### Graph freshness and maintenance
+Escalation and delegation: keep ordinary fixes local. For a material auth, persistence, concurrency, or deployment decision, fill in `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` and use `ASTRA_ARCHITECT.md`. Delegate only when asked. Give each agent a bounded packet (objective, files, acceptance checks) and ask it to label claims `FACT`, `INFERENCE`, or `UNKNOWN`. Verify agent claims against source.
 
-- Before relying on graph-derived context, inspect its metadata and analysis commit. Resolve the recorded commit before comparing it with the current revision.
-- Check project-scoped committed changes since analysis, plus staged, unstaged, and untracked changes. Ignore generated graph artifacts when assessing source drift. A different commit hash alone does not establish staleness.
-- If the graph is stale, missing, corrupted, or has unverifiable metadata, note relevant limitations and inspect current source through targeted searches and architecture documentation. Index availability must not block progress.
-- Prefer supported incremental updates after meaningful source changes. Rebuild the full index only when none is usable, it is corrupted, major structural changes make incremental updates unreliable, indexing configuration materially changes, or a full rebuild is explicitly requested.
-- Keep shared graph artifacts under version control, excluding `intermediate/` and `diff-overlay.json` in the selected graph directory. Use Git LFS for graph JSON files of 10 MB or larger.
-
-### Implementation and review
-
-1. Establish the task boundary and acceptance criteria using existing context.
-2. Inspect the relevant current source, implement the scoped change, and perform the verification described below.
-3. Review your changes against the starting worktree, including affected contracts and dependencies; report results and remaining limitations.
-
-For reviews, start from the diff and prefer available diff-aware graph or dependency-impact analysis. Trace affected callers, downstream consumers, API contracts, persistence boundaries, authentication and authorization, security-sensitive components, and transaction or concurrency behavior. Inspect the relevant tests and broaden the review only where impact remains uncertain.
-
-### Coordination and delegated work
-
-When multiple agents are available, the coordinator supplies bounded objectives, acceptance criteria, relevant graph context, likely files, and dependency boundaries. Assign distinct file ownership where practical.
-
-Delegated agents start with that supplied scope, inspect directly relevant dependencies, and use the graph for missing context. Report unexpected cross-component dependencies before expanding shared file ownership. Return concrete findings, changed files, and verification evidence; avoid unrelated refactoring and repeated architecture discovery.
+Architecture delta: when a change affects dependencies, public or API contracts, auth, schema or migrations, shared interfaces, or deployment, add a short dated entry at the top of `docs/ai-context/ARCHITECTURE_DELTA.md`. Keep that entry to 10 lines or fewer. Skip this step for routine fixes.
 
 ## Architecture
 
@@ -97,46 +76,3 @@ Use `package.json` (or the relevant package manifest), `vitest.config.mts`, `pla
 - Production builds include TypeScript checking. There is no build-time backend switch; `NEXT_PUBLIC_BACKEND` is no longer read.
 - CI covers lint, unit tests, coverage, type checking, the production build, a Docker image build, PostgreSQL integration tests, Playwright, and separate mobile lint/type/test checks. Run the relevant checks locally and disclose anything that could not be verified.
 
-## Progressive context retrieval
-
-Keep architecture reasoning evidence-rich and context-bounded. The compact entry point is `docs/ai-context/README.md`.
-
-- For substantial tasks use this order: existing task-specific context/current diff → `CURRENT_STATE.md` → `ARCHITECTURE.md` → relevant `docs/ai-context/` domain file → Atlas → Serena → targeted source snippets → complete source files → Understand Anything for complex semantic/cross-cutting questions → broad repository exploration only as a last resort.
-- On an unfamiliar or broad repository task, run Atlas (`atlas . --budget 2048`, adding `--focus <path>` when useful) before opening many files.
-- Use Serena for live symbol definitions/bodies, implementations, references, related symbols, and diagnostics. Prefer symbol/reference retrieval over whole-file reads when it answers the question.
-- Read targeted source snippets to verify behavior before editing. Expand to complete files only when narrower evidence is insufficient.
-- Use Understand Anything (`.ua/knowledge-graph.json`) only when semantic, cross-cutting, onboarding/context-recovery, or dependency-impact questions remain unclear after the narrower steps. Check `.ua/meta.json` and source drift before relying on graph conclusions; do not rebuild the graph merely because HEAD differs.
-- For tiny, already-localized edits, skip the full hierarchy and read the known file/diff directly.
-
-### CLI context hygiene
-
-- Use RTK for noisy supported CLI output when exact raw output is unnecessary; keep raw commands for forensic/audit output, binary data, or cases where RTK filtering would hide required detail.
-- Bound searches and logs, avoid dumping generated/vendor directories, and summarize large results before continuing.
-- Reuse retrieved evidence instead of repeatedly re-reading the same files. Record architecture-affecting conclusions in `docs/ai-context/ARCHITECTURE_DELTA.md` rather than carrying them only in chat history.
-- Do not dump dependency lockfiles into model context unless dependency resolution requires them; do not pass full test/build output when a concise failure digest is sufficient; do not pass full Git history when the relevant range is known.
-- Prefer `git diff` over re-reading unchanged files, specific symbols over full source files, architecture deltas over reconstruction, and deterministic extraction over LLM repository summarization when the evidence is equivalent.
-
-## Model escalation policy
-
-Use local deterministic retrieval for discovery. Escalate to Astra/high only for a material auth, persistence, concurrency, or deployment decision, or when the user explicitly requests it. Ordinary fixes stay local. Tiny known-location tasks start with the target file; the discovery hierarchy is a fallback, not a mandatory sequence.
-
-### Bounded review and repair
-
-- Before implementation, assemble one decision packet using `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` and `ASTRA_ARCHITECT.md`: precise question, verified source references, constraints, alternatives, unknowns, and acceptance checks. For lifecycle changes, include activation, normal completion, recovery, retries, stale artifacts, and concurrent transitions together. Resolve the protocol before patching individual symptoms.
-- When delegation is authorized, default to one initial review and one closure review of the resulting delta. Give agents bounded ownership and acceptance checks; start new agents with a compact packet rather than the full conversation. Target 2,000 tokens per packet and 800 per report, expanding only for named correctness-critical evidence.
-- Keep a compact finding ledger for substantial reviews: ID, source, failure scenario, fix, verification, and remaining blocker. Follow-ups send only changed facts and unresolved IDs. Do not rediscover closed findings or reread unchanged dependencies.
-- If closure reveals a new correctness defect, fix it and verify the affected behavior. If the same design needs a second repair, stop incremental patching and resolve the underlying invariant with a consolidated decision packet before requesting another review. Additional reviews require a concrete unresolved risk; a generic request for another final pass is insufficient.
-- Request `FACT`, `INFERENCE`, or `UNKNOWN` labels and file references from scouts. Resolve disagreements against current source. Never substitute an agent's confidence for verification.
-
-### Retrieval and verification budgets
-
-- Default tool output targets: 3,000 tokens for source retrieval and 1,000 for successful checks. Return exit status, counts, and relevant failures; retain raw logs outside model context when needed. Never truncate away an unexplained failure. Request tool names and short descriptions before loading selected schemas; avoid dumping the entire tool catalog.
-- During repair, run focused tests. Run the required full matrix on the settled patch; repeat a broad check only when subsequent changes affect what it verified. Track the tested revision or file state, so stale results are not reused. Do not print successful build route tables repeatedly.
-- After compaction, use the finding ledger and the latest diff. Read instructions once per conversation unless they changed or the summary does not preserve their requirements.
-- Usage thresholds are ceilings, never a target to consume. For a requested quota-controlled loop, check account usage before expensive delegation and after each completed batch. Schedule a reset follow-up only when the requested threshold is reached and the weekly reserve permits more work; unavailable telemetry must be reported, not estimated from aggregate goal tokens.
-
-These are soft context budgets, not correctness limits. Expand for a specific security, data-loss, migration, or concurrency uncertainty, and record why.
-
-## Architecture delta workflow
-
-When an architecture baseline exists, identify the baseline commit/tag, inspect the relevant Git diff, classify only architecture-sensitive changes, and update `docs/ai-context/ARCHITECTURE_DELTA.md`. Architecture-sensitive changes include dependencies/configuration, API/public contracts, auth/security, database/schema/migrations, shared interfaces/repository abstractions, infrastructure/deployment, and cross-layer refactors. Do not make Astra re-analyze unchanged components merely because a new architecture review was requested, and do not refresh the full context pack for routine bug fixes.
