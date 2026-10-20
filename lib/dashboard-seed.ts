@@ -40,6 +40,7 @@ export function projectDashboardProfile(p: User): User {
     id: p.id, email: p.email, name: p.name, department: p.department, title: p.title,
     role: p.role, permission_role: p.permission_role, hierarchy_role: p.hierarchy_role,
     is_active: p.is_active, manager_id: p.manager_id, created_at: p.created_at,
+    is_test_user: p.is_test_user === true, scope_departments: p.scope_departments ?? null,
     dashboard_layout: projectDashboardLayout(p.dashboard_layout),
     admin_layout: projectAdminLayout(p.admin_layout),
     mobile_layout: p.mobile_layout ? sanitizeMobileLayout(p.mobile_layout) : null,
@@ -49,16 +50,17 @@ export function projectDashboardProject(p: Project): Project {
   return { id: p.id, name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project, created_at: p.created_at }
 }
 export function projectDashboardActivity(p: ActivityType): ActivityType {
-  return { id: p.id, name: p.name, is_active: p.is_active, created_at: p.created_at }
+  return { id: p.id, name: p.name, is_active: p.is_active, created_at: p.created_at, entry_type: p.entry_type ?? null, code: p.code ?? null }
 }
 export function projectDashboardEntry(t: Timesheet): Timesheet {
   return {
     id: t.id, user_id: t.user_id, project_id: t.project_id, activity_type_id: t.activity_type_id,
-    entry_type: t.entry_type, activity_code: t.activity_code, ticket_number: t.ticket_number, activity_other: t.activity_other,
+    entry_type: t.entry_type, activity_code: t.activity_code, ticket_number: t.ticket_number, customer: t.customer ?? null, activity_other: t.activity_other,
     log_date: t.log_date, hours_worked: t.hours_worked, work_done: t.work_done, created_at: t.created_at,
     projects: t.projects ? { name: t.projects.name } : null,
-    profiles: t.profiles ? { email: t.profiles.email } : null,
+    profiles: t.profiles ? { email: t.profiles.email, name: t.profiles.name ?? null } : null,
     activity_types: t.activity_types ? { name: t.activity_types.name } : null,
+    activity_label: t.activity_label ?? null,
   }
 }
 export function alignedDashboardActor(actor: Actor, profile: User): boolean {

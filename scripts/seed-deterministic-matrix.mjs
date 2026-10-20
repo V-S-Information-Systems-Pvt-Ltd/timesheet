@@ -129,7 +129,7 @@ export async function seedMatrix(dbUrl) {
       await pool.query(
         `insert into public.activity_types (name, is_active)
          values ($1, true)
-         on conflict (name) do update set is_active = true`,
+         on conflict ((coalesce(entry_type, '')), name) do update set is_active = true`,
         [name]
       )
     }

@@ -158,9 +158,10 @@ export async function createActivityTypeAdmin(
 
 export async function createActivityTypeBrowser(
   actor: Actor,
-  name: string
+  name: string,
+  entryType?: 'project' | 'internal'
 ): Promise<MobileServiceResult<{ success: true }>> {
-  const result = await createActivityTypeDomain(actor, { name }, referenceDeps())
+  const result = await createActivityTypeDomain(actor, { name, entryType }, referenceDeps())
   if (!result.ok) return mapError(result.error, 'Only admins can create activity types.')
   return { success: true, data: { success: true }, status: 201 }
 }

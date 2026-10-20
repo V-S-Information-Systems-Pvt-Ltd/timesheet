@@ -297,7 +297,7 @@ interface MockResponse<T = Record<string, unknown>> {
 
       const res = (await postActivities(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
-      expect(mockCreateActivityType).toHaveBeenCalledWith(adminActor, 'Architecture Review')
+      expect(mockCreateActivityType).toHaveBeenCalledWith(adminActor, 'Architecture Review', null)
       expect(mockListActivityTypes).not.toHaveBeenCalled()
       expect(res.body.data).toEqual({ id: 'act-new', name: 'Architecture Review', is_active: true, created_at: '2026-09-01' })
     })

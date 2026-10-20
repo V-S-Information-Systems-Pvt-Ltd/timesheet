@@ -27,7 +27,7 @@ describe('mixed-format reports', () => {
     const defaults = { defaultGroupBy: 'user' as const, clock: () => '2026-10-01' }
     expect(resolveReportTotalsQuery({ groupBy: 'type', entryType: 'legacy' }, defaults).ok).toBe(true)
     expect(resolveReportTotalsQuery({ entryType: 'guess' }, defaults).ok).toBe(false)
-    expect(resolveReportTotalsQuery({ activityCode: 'guess' }, defaults).ok).toBe(false)
+    expect(resolveReportTotalsQuery({ activityCode: 'Not a code!' }, defaults).ok).toBe(false)
   })
   it('appends classification details using the existing safe CSV encoder', () => {
     const csv = formatTimesheetCsvChunk([rows[3]], true)

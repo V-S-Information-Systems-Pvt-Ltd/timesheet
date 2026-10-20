@@ -189,7 +189,7 @@ test('duplicate locks survive leaving and remounting the entries tab', async ({ 
   fixture.hold()
   await row(page).getByRole('button', { name: 'Duplicate', exact: true }).click()
   await expect.poll(() => fixture.calls.length).toBe(1)
-  await openNav(page, 'Team')
+  await openNav(page, 'Team', 'Org Tree')
   await expect(row(page)).toHaveCount(0)
   await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(row(page)).toBeVisible()

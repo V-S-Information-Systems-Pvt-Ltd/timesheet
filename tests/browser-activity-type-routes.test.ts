@@ -95,7 +95,7 @@ describe('browser activity-type write parity', () => {
     const response = await POST(request('POST', { name: ' Coding ' }))
     expect(response.status).toBe(201)
     expect(await response.json()).toEqual({ data: { success: true }, error: null })
-    expect(persistence.createActivityType).toHaveBeenCalledWith(actor, 'Coding')
+    expect(persistence.createActivityType).toHaveBeenCalledWith(actor, 'Coding', null)
     expect(persistence.listActivityTypes).not.toHaveBeenCalled()
   })
 

@@ -24,7 +24,7 @@ export function useAppNav(profile: User | null): NavGroup[] {
 
   return useMemo(() => {
     if (!profile) return []
-    const access = { permission: profile.permission_role, hierarchy: profile.hierarchy_role, isActive: profile.is_active, superAdmin }
+    const access = { permission: profile.permission_role, hierarchy: profile.hierarchy_role, isActive: profile.is_active, superAdmin, scoped: !!profile.scope_departments?.length }
     const tiles = resolveNavTiles({ saved: { dashboard: profile.dashboard_layout, admin: profile.admin_layout }, defaults, access })
     return buildNavGroups(access, tiles)
   }, [profile, defaults, superAdmin])

@@ -58,6 +58,20 @@ export async function deleteUserBrowser(
   return result.ok ? acknowledged() : failure(result.error)
 }
 
+export async function setTestUserBrowser(
+  actor: Actor,
+  userId: string,
+  isTestUser: boolean
+): Promise<MobileServiceResult<{ success: true }>> {
+  if (!isSuperAdmin(actor)) {
+    return { success: false, code: 'FORBIDDEN', message: 'Super-admin access required.', status: 403 }
+  }
+  const result = await peopleDeps().persistence.setTestUser(actor, userId, isTestUser)
+  if (result.error) return { success: false, code: 'STORAGE_ERROR', message: result.error, status: 500 }
+  await safeAudit(actor, { action: isTestUser ? 'user.test_user_set' : 'user.test_user_unset', targetId: userId })
+  return acknowledged()
+}
+
 export async function deleteActivityTypeBrowser(
   actor: Actor,
   id: string

@@ -23,6 +23,7 @@ function setup() {
     list: vi.fn(), getBackfillWindow: vi.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
     getById, getByIds: vi.fn(), getByUserDate: vi.fn(), getLatest: vi.fn(), countByProject: vi.fn(),
     projectEligibility: vi.fn().mockResolvedValue({ eligible: true }),
+    activityExists: vi.fn().mockResolvedValue(true),
     sumHoursForUserDate: vi.fn().mockResolvedValue(0), sumHoursForUserDates: vi.fn(),
     create, update: vi.fn(), remove: vi.fn(), bulkUpdate: vi.fn(),
   }

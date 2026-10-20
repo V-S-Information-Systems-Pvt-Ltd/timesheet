@@ -13,7 +13,7 @@ import type {
   BackupReminder,
   BackupTimesheet,
 } from '@/app/types'
-import { newEntrySchema, normalizeClassification } from '@vsis/contracts'
+import { storedEntrySchema, normalizeClassification, isEntryType, isActivityCode } from '@vsis/contracts'
 import { isValidISODate } from '@/lib/validation'
 
 export interface BackupValidationResult {
@@ -97,11 +97,14 @@ export function parseBackup(input: unknown): BackupValidationResult {
     const r = row as Record<string, unknown>
     const name = str(r?.name)
     if (!name) return { ok: false, error: 'An activity type in the backup is missing its name.' }
-    if (seenTypes.has(name)) continue
-    seenTypes.add(name)
+    const catalogue = isEntryType(r?.entry_type) && isActivityCode(r?.code) ? { entry_type: r.entry_type, code: r.code } : null
+    const typeKey = catalogue ? `${catalogue.entry_type}:${catalogue.code}` : name
+    if (seenTypes.has(typeKey)) continue
+    seenTypes.add(typeKey)
     activityTypes.push({
       name,
       is_active: typeof r?.is_active === 'boolean' ? r.is_active : true,
+      ...(catalogue ?? {}),
     })
   }
 
@@ -120,8 +123,8 @@ export function parseBackup(input: unknown): BackupValidationResult {
       return { ok: false, error: `Invalid hours "${String(r?.hours_worked)}" on row for ${email} (${date}).` }
     }
     const activityType = str(r?.activity_type)
-    let classification: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number'> = {
-      entry_type: null, activity_code: null, activity_other: null, ticket_number: null,
+    let classification: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number' | 'customer'> = {
+      entry_type: null, activity_code: null, activity_other: null, ticket_number: null, customer: null,
     }
     if (isV2) {
       const fields = ['project', 'activity_type', 'entry_type', 'activity_code', 'activity_other', 'ticket_number'] as const
@@ -134,13 +137,14 @@ export function parseBackup(input: unknown): BackupValidationResult {
         }
       } else {
         if (r.activity_type !== null) return { ok: false, error: 'A classified timesheet cannot reference a legacy activity type.' }
-        const parsed = newEntrySchema.safeParse({ entryType: r.entry_type, activityCode: r.activity_code,
+        const parsed = storedEntrySchema.safeParse({ entryType: r.entry_type, activityCode: r.activity_code,
           projectId: project, activityOther: r.activity_other, ticketNumber: r.ticket_number,
+          customer: typeof r.customer === 'string' ? r.customer : null,
           hoursWorked: hours, workDone: cleanString(r.work_done), logDate: date })
         if (!parsed.success) return { ok: false, error: `Invalid timesheet classification: ${parsed.error.issues[0].message}` }
         const normalized = normalizeClassification(parsed.data)
         classification = { entry_type: normalized.entryType, activity_code: normalized.activityCode,
-          activity_other: normalized.activityOther, ticket_number: normalized.ticketNumber }
+          activity_other: normalized.activityOther, ticket_number: normalized.ticketNumber, customer: normalized.customer }
         if (project && !projects.some(p => p.name === project && p.is_timesheet_project)) {
           return { ok: false, error: 'A Project entry references a missing or ineligible project.' }
         }

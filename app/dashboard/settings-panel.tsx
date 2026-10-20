@@ -45,7 +45,7 @@ export default function SettingsPanel({
 
   return (
     <Card
-      title="Settings"
+      title="Time Entry Window"
       subtitle="How far back users can log or edit time"
       icon={<IconScale className="h-4.5 w-4.5" />}
     >

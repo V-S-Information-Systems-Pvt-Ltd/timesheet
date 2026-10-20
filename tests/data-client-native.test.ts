@@ -317,6 +317,8 @@ describe('backend-neutral data client', () => {
         title: 'Lead',
         manager_id: null,
         is_active: true,
+        is_test_user: false,
+        scope_departments: null,
         dashboard_layout: [{ id: 'entries', enabled: true }],
         admin_layout: null,
         mobile_layout: [{ id: 'timesheets', enabled: true }],
@@ -364,6 +366,45 @@ describe('backend-neutral data client', () => {
     ])
     await Promise.all([dataClient.setActivityTypeActive('a1', true), dataClient.setActivityTypeActive('a1', true)])
     expect(mockFetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('reads the org tree, marks test users and creates typed activity types', async () => {
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: [{ id: 'u1', email: 'a@b.com', name: 'A', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true, isTestUser: true }], error: null }))
+    const tree = await dataClient.getOrgTree()
+    expect(tree.data?.[0]).toMatchObject({ id: 'u1', is_test_user: true })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/people?scope=org', expect.any(Object))
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'FORBIDDEN', message: 'Denied' } }, 403))
+    expect(await dataClient.getOrgTree()).toMatchObject({ data: null, error: 'Denied' })
+
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.setTestUser('u/1', true)).toEqual({ error: null })
+    expect(await dataClient.addActivityType('Design', 'project')).toEqual({ error: null })
+    expect(mockFetch.mock.calls.slice(-2).map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/superadmin/users/u%2F1', 'PATCH', JSON.stringify({ isTestUser: true })],
+      ['http://localhost/api/v1/admin/activity-types', 'POST', JSON.stringify({ name: 'Design', entryType: 'project' })],
+    ])
+  })
+
+  it('reads departments and sends department and department-access writes', async () => {
+    const dept = { id: 'd1', name: 'Engineering', member_count: 2, created_at: '2026-10-01T00:00:00Z' }
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: [dept], error: null }))
+    expect(await dataClient.getDepartments()).toEqual({ data: [dept], error: null })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/departments', expect.any(Object))
+
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    await dataClient.addDepartment('Sales')
+    await dataClient.renameDepartment('d/1', 'Ops')
+    await dataClient.deleteDepartment('d/1')
+    await dataClient.setDepartmentScope('u/1', ['Engineering'])
+    expect(mockFetch.mock.calls.slice(-4).map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/departments', 'POST', JSON.stringify({ name: 'Sales' })],
+      ['http://localhost/api/v1/admin/departments/d%2F1', 'PATCH', JSON.stringify({ name: 'Ops' })],
+      ['http://localhost/api/v1/admin/departments/d%2F1', 'DELETE', undefined],
+      ['http://localhost/api/v1/admin/users/u%2F1/department-scope', 'PUT', JSON.stringify({ departments: ['Engineering'] })],
+    ])
+
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'FORBIDDEN', message: 'Only admins without a department limit can manage departments.' } }, 403))
+    expect((await dataClient.addDepartment('X')).error).toMatch(/department limit/)
   })
 
   it('loads titles through an isolated v1 reference mode', async () => {
@@ -536,7 +577,9 @@ describe('backend-neutral data client', () => {
         id: 'a1',
         name: 'Development',
         is_active: true,
-                created_at: '2026-09-26T00:00:00.000Z',
+        entry_type: null,
+        code: null,
+        created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -558,7 +601,9 @@ describe('backend-neutral data client', () => {
         id: 'a2',
         name: 'Retired',
         is_active: false,
-                created_at: '2026-09-25T00:00:00.000Z',
+        entry_type: null,
+        code: null,
+        created_at: '2026-09-25T00:00:00.000Z',
       }],
       error: null,
     })

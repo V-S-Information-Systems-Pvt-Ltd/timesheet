@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const browserActivityTypeCreateSchema = z.object({
   name: z.string(),
+  entryType: z.enum(['project', 'internal']).optional(),
 }).strict()
 
 export const browserActivityTypeMutationSchema = z.discriminatedUnion('operation', [

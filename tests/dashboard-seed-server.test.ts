@@ -47,7 +47,7 @@ beforeEach(() => {
 describe('server dashboard seed gates and independent reads', () => {
   it('seeds bounded URL paging, scoped people and full month aggregates', async () => {
     const seed = await getDashboardSeed(new URLSearchParams('page=3&size=25&user=bob'))
-    expect(seed.entries.data).toEqual({ rows: [{ ...entry, projects: null, profiles: null, activity_types: null }], count: 1001 })
+    expect(seed.entries.data).toEqual({ rows: [{ ...entry, customer: null, projects: null, profiles: null, activity_types: null, activity_label: null }], count: 1001 })
     expect(mocks.entries).toHaveBeenCalledWith(actor(), { from: 50, to: 74, userId: 'bob', includeCount: true }, {})
     expect(mocks.people).toHaveBeenCalledWith(actor(), {})
     expect(seed.month?.state).toEqual({ status: 'ready', totals: { totalHours: 9000, totalEntries: 3000 }, error: null })
@@ -132,6 +132,6 @@ describe('server dashboard seed gates and independent reads', () => {
     const serialized = JSON.stringify(seed)
     for (const key of ['SECRET_SENTINEL', 'password_hash', 'session_version', 'provider_metadata']) expect(serialized).not.toContain(key)
     expect(seed.profile?.dashboard_layout).toEqual({ tiles: [{ id: 'entries', enabled: true }] })
-    expect(seed.entries.data?.rows[0].profiles).toEqual({ email: p.email })
+    expect(seed.entries.data?.rows[0].profiles).toEqual({ email: p.email, name: null })
   })
 })
