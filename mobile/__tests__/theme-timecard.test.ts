@@ -80,8 +80,10 @@ describe('fonts', () => {
       numeralMedium: 'BarlowSemiCondensed-Medium',
     });
     expect(resolveFonts('ios')).toEqual(resolveFonts('android'));
-    expect(resolveFonts('windows').numeral).toBe('Barlow Semi Condensed SemiBold');
-    expect(resolveFonts('windows').numeralMedium).toBe('Barlow Semi Condensed Medium');
+  });
+
+  it('uses the system font on Windows, where bundled fonts cannot be registered', () => {
+    expect(resolveFonts('windows')).toEqual({ numeral: undefined, numeralMedium: undefined });
   });
 
   it('falls back to the system font on an unknown platform', () => {
