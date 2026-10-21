@@ -16,7 +16,7 @@ const REFERENCE = {
   activityTypes: [{ id: 'a1', name: 'Development' }],
 };
 
-function mockApiClient(reference: unknown = REFERENCE) {
+function mockApiClient(reference: unknown = REFERENCE, getBackfillWindow?: jest.Mock) {
   (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(
     () =>
       ({
@@ -37,6 +37,7 @@ function mockApiClient(reference: unknown = REFERENCE) {
         }),
         getReference: jest.fn().mockResolvedValue(reference),
         getDashboard: jest.fn().mockResolvedValue({}),
+        getBackfillWindow,
         createTimesheet: jest.fn().mockResolvedValue({ success: true }),
       } as unknown as ApiClient)
   );
@@ -218,5 +219,28 @@ describe('TimeEntryForm scroll-to-first-error', () => {
     expect(
       renderer.root.findAllByProps({ accessibilityLabel: 'Hours Worked' })[0].props.value
     ).toBe('');
+  });
+});
+
+describe('TimeEntryForm backfill window', () => {
+  const form = () => (
+    <TimeEntryForm
+      initialValues={{ logDate: '2000-01-01' }}
+      isDarkMode={false}
+      mode="create"
+      onSubmit={jest.fn()}
+    />
+  );
+
+  it('flags a date before the writable window once the window loads', async () => {
+    mockApiClient(REFERENCE, jest.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }));
+    const renderer = await mount(form());
+    expect(body(renderer)).toContain('Date is before the earliest allowed date (');
+  });
+
+  it('does not block when the window cannot be loaded', async () => {
+    mockApiClient(REFERENCE, jest.fn().mockRejectedValue(new Error('offline')));
+    const renderer = await mount(form());
+    expect(body(renderer)).not.toContain('earliest allowed date');
   });
 });

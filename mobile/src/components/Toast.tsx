@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { Icon } from './Icon';
 
 export type ToastType = 'success' | 'error' | 'info';
@@ -74,16 +74,16 @@ export function Toast({
 
   const bgStyle =
     type === 'success'
-      ? { backgroundColor: palette.successBoxBg, borderColor: colors.success }
+      ? { backgroundColor: palette.loggedTint, borderColor: palette.logged }
       : type === 'error'
-      ? { backgroundColor: palette.errorBoxBg, borderColor: colors.error }
-      : { backgroundColor: palette.card, borderColor: palette.border };
+      ? { backgroundColor: palette.missingTint, borderColor: palette.missingText }
+      : { backgroundColor: palette.sheet, borderColor: palette.controlBorder };
 
   const textStyle =
     type === 'success'
-      ? { color: colors.success }
+      ? { color: palette.loggedText }
       : type === 'error'
-      ? { color: colors.error }
+      ? { color: palette.missingText }
       : { color: palette.foreground };
 
   const iconName = type === 'success' ? 'check' : type === 'error' ? 'close' : 'clock';
@@ -110,7 +110,7 @@ export function Toast({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     flexDirection: 'row',
     left: spacing.lg,
@@ -120,7 +120,6 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     top: spacing.md,
     zIndex: 999,
-    ...shadows.md,
   },
   icon: {
     fontSize: 16,
@@ -129,7 +128,7 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    fontSize: typography.caption,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: '500',
   },
 });

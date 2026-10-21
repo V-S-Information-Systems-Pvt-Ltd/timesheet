@@ -37,6 +37,7 @@ import { MoreScreen } from './src/screens/MoreScreen';
 import { EditTimeScreen } from './src/screens/EditTimeScreen';
 import { LayoutCustomizerScreen } from './src/screens/LayoutCustomizerScreen';
 import { ProjectAdminScreen } from './src/screens/ProjectAdminScreen';
+import { DepartmentAdminScreen } from './src/screens/DepartmentAdminScreen';
 import { ActivityTypeAdminScreen } from './src/screens/ActivityTypeAdminScreen';
 import { UserAdminScreen } from './src/screens/UserAdminScreen';
 import { SettingsAdminScreen } from './src/screens/SettingsAdminScreen';
@@ -227,6 +228,9 @@ export function MainNavigator() {
             onClearFilterUser={() => {
               dispatchNav({ type: 'CLEAR_PARAMS' });
             }}
+            onSelectFilterUser={(user) =>
+              user ? navigateTo('timesheets', { filterUser: user }) : dispatchNav({ type: 'CLEAR_PARAMS' })
+            }
             onEditTime={(entry) => {
               setEditingEntry(entry);
               navigateTo('edit-time');
@@ -346,6 +350,14 @@ export function MainNavigator() {
           />
         );
         break;
+      case 'admin-departments':
+        screenContent = (
+          <DepartmentAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
       case 'admin-activities':
         screenContent = (
           <ActivityTypeAdminScreen
@@ -402,6 +414,8 @@ export function MainNavigator() {
           <HomeScreen
             isDarkMode={isDarkMode}
             onLogTime={() => navigateTo('log-time')}
+            onLogTimeWithHours={hoursWorked => navigateTo('log-time', { timeEntryDraft: { hoursWorked } })}
+            onLogTimeForDate={logDate => navigateTo('log-time', { timeEntryDraft: { logDate } })}
             onViewLeaves={() => navigateTo('leaves')}
             onViewProfile={() => navigateTo('profile')}
             onViewReminders={() => navigateTo('reminders')}

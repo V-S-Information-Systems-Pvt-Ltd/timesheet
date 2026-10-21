@@ -116,6 +116,38 @@ export function createAdminReferenceActions(
       return res;
     },
 
+    listDepartments: async (): Promise<{ id: string; name: string }[]> => {
+      return withAuth((c, token) => c.listDepartments(token));
+    },
+
+    createAdminDepartment: async (name: string): Promise<{ id: string; name: string }> => {
+      return withAuth((c, token) => c.createAdminDepartment(name, token), {
+        errorMessage: 'You must be signed in to create a department.',
+      });
+    },
+
+    renameAdminDepartment: async (id: string, name: string): Promise<void> => {
+      await withAuth((c, token) => c.renameAdminDepartment(id, name, token), {
+        errorMessage: 'You must be signed in to rename a department.',
+      });
+    },
+
+    deleteAdminDepartment: async (id: string): Promise<void> => {
+      await withAuth((c, token) => c.deleteAdminDepartment(id, token), {
+        errorMessage: 'You must be signed in to delete a department.',
+      });
+    },
+
+    setUserDepartmentScope: async (userId: string, departments: string[]): Promise<void> => {
+      await withAuth((c, token) => c.setUserDepartmentScope(userId, departments, token), {
+        errorMessage: 'You must be signed in to change department scope.',
+      });
+    },
+
+    getBackfillWindow: async (): Promise<BackfillSettings> => {
+      return withAuth((c, token) => c.getBackfillWindow(token));
+    },
+
     // Titles
     listAdminTitles: async (): Promise<TitleAdminItem[]> => {
       return withAuth((c, token) => c.listAdminTitles(token), { defaultValue: [] });

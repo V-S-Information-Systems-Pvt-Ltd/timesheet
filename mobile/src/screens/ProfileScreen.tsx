@@ -8,11 +8,13 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionReference, useSessionActions } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
+import { DepartmentField } from '../components/DepartmentField';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Chip } from '../components/Chip';
 
 interface ProfileScreenProps {
   isDarkMode: boolean;
@@ -21,11 +23,17 @@ interface ProfileScreenProps {
 
 type ConfirmKind = 'logout-all' | 'disconnect' | null;
 
+/** 'team_lead' -> 'Team lead'. */
+function humanize(value: string): string {
+  const text = value.replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreenProps) {
   const palette = useTheme().palette;
   const { actor, effectiveActor, serverUrl, config } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
-  const { updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
+  const { listDepartments, updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
 
   const currentActor = effectiveActor || actor;
 
@@ -56,73 +64,70 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
         department: department.trim(),
         title: title.trim(),
       });
-      setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
+      setProfileMsg({ type: 'success', text: 'Profile updated.' });
       setIsEditingProfile(false);
     } catch (err) {
       setProfileMsg({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to update profile.',
+        text: err instanceof Error ? err.message : 'Could not update your profile. Check your connection and try again.',
       });
     } finally {
       setIsSavingProfile(false);
     }
   }
 
+  const renderValueRow = (label: string, value: string, valueColor?: string) => (
+    <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+      <Text style={[styles.rowLabel, { color: palette.muted }]}>{label}</Text>
+      <Text style={[styles.rowValue, { color: valueColor ?? palette.foreground }]}>{value}</Text>
+    </View>
+  );
+
+  const displayName = currentActor?.name || currentActor?.email || 'User';
+  const roleText = humanize(currentActor?.permissionRole ?? currentActor?.role ?? 'user');
+  const hierarchyText = humanize(currentActor?.hierarchyRole ?? 'user');
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
         <ScreenHeader
-          title="My Profile"
+          title="Profile"
           onBack={onBack}
           backLabel="‹ Dashboard"
           palette={palette}
         />
 
-        {profileMsg ? (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.msgBox,
-              {
-                backgroundColor: profileMsg.type === 'success' ? palette.badgeBg : palette.errorBoxBg,
-                borderColor: profileMsg.type === 'success' ? palette.primary : colors.error,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.msgText,
-                { color: profileMsg.type === 'success' ? palette.primary : colors.error },
-              ]}
-            >
-              {profileMsg.text}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* User Card */}
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
-            <Text style={[styles.avatarText, { color: palette.onPrimary }]}>
-              {currentActor?.name ? currentActor.name[0].toUpperCase() : currentActor?.email ? currentActor.email[0].toUpperCase() : 'U'}
-            </Text>
-          </View>
+        {/* Identity: plain text on paper. */}
+        <View style={styles.identity}>
+          <Text style={[styles.userName, { color: palette.foreground }]}>{displayName}</Text>
           {currentActor?.name ? (
-            <Text style={[styles.userName, { color: palette.foreground }]}>{currentActor.name}</Text>
+            <Text style={[styles.email, { color: palette.muted }]}>{currentActor.email}</Text>
           ) : null}
-          <Text style={[styles.email, { color: palette.muted }]}>{currentActor?.email}</Text>
-          <View style={[styles.badge, { backgroundColor: palette.badgeBg }]}>
-            <Text style={[styles.badgeText, { color: palette.primary }]}>
-              {currentActor?.role?.toUpperCase() ?? 'USER'}
-            </Text>
-          </View>
+          <Text style={[styles.role, { color: palette.muted }]}>{roleText}</Text>
         </View>
 
-        {/* Professional Details Card */}
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
+          {profileMsg ? (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.msgBox,
+                { backgroundColor: profileMsg.type === 'success' ? palette.loggedTint : palette.errorBoxBg },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.msgText,
+                  { color: profileMsg.type === 'success' ? palette.loggedText : palette.error },
+                ]}
+              >
+                {profileMsg.text}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.cardTitle, { color: palette.foreground }]}>Professional Info</Text>
+            <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Professional info</Text>
             <PressableScale
               accessibilityLabel={isEditingProfile ? 'Cancel editing profile' : 'Edit profile'}
               accessibilityRole="button"
@@ -130,70 +135,53 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
                 setIsEditingProfile(!isEditingProfile);
                 setProfileMsg(null);
               }}
-              style={styles.editToggle}
+              style={styles.textAction}
             >
-              <Text style={[styles.editToggleText, { color: palette.primary }]}>
+              <Text style={[styles.textActionLabel, { color: palette.primary }]}>
                 {isEditingProfile ? 'Cancel' : 'Edit'}
               </Text>
             </PressableScale>
           </View>
 
           {isEditingProfile ? (
-            <View style={styles.editForm}>
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Department</Text>
-              <TextInput
-                accessibilityLabel="Department"
-                onChangeText={setDepartment}
-                placeholder="e.g. Engineering, Delivery"
-                placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.input,
-                  { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                ]}
-                value={department}
-              />
+            <View>
+              <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+                <Text style={[styles.rowLabel, { color: palette.muted }]}>Department</Text>
+                <DepartmentField
+                  listDepartments={listDepartments}
+                  onChange={setDepartment}
+                  palette={palette}
+                  value={department}
+                />
+              </View>
 
-              <Text style={[styles.fieldLabel, { color: palette.foreground, marginTop: spacing.sm }]}>Job Title</Text>
-              <TextInput
-                accessibilityLabel="Job Title"
-                onChangeText={setTitle}
-                placeholder="e.g. Senior Software Engineer"
-                placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.input,
-                  { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                ]}
-                value={title}
-              />
-
-              {reference?.titles && reference.titles.length > 0 ? (
-                <View style={styles.titleSuggestions}>
-                  <Text style={[styles.suggestionLabel, { color: palette.muted }]}>Standard Titles:</Text>
+              <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+                <Text style={[styles.rowLabel, { color: palette.muted }]}>Job title</Text>
+                <TextInput
+                  accessibilityLabel="Job Title"
+                  onChangeText={setTitle}
+                  placeholder="Senior software engineer"
+                  placeholderTextColor={palette.placeholder}
+                  style={[styles.input, { color: palette.foreground }]}
+                  value={title}
+                />
+                {reference?.titles && reference.titles.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
-                    {reference.titles.map((t, idx) => (
-                      <PressableScale
-                        key={idx}
-                        accessibilityLabel={`Select title ${t}`}
-                        accessibilityRole="button"
-                        onPress={() => setTitle(t)}
-                        style={[
-                          styles.chip,
-                          title === t ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }] : { backgroundColor: palette.card, borderColor: palette.border },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            title === t ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
-                          ]}
-                        >
-                          {t}
-                        </Text>
-                      </PressableScale>
-                    ))}
+                    <View style={styles.chipScroll}>
+                      {reference.titles.map((t, idx) => (
+                        <Chip
+                          key={idx}
+                          accessibilityLabel={`Select title ${t}`}
+                          active={title === t}
+                          label={t}
+                          onPress={() => setTitle(t)}
+                          palette={palette}
+                        />
+                      ))}
+                    </View>
                   </ScrollView>
-                </View>
-              ) : null}
+                ) : null}
+              </View>
 
               <PressableScale
                 accessibilityLabel="Save profile changes"
@@ -201,83 +189,38 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
                 accessibilityState={{ busy: isSavingProfile }}
                 disabled={isSavingProfile}
                 onPress={handleSaveProfile}
-                style={[styles.saveProfileBtn, { backgroundColor: palette.primary }]}
+                style={[styles.primaryButton, { backgroundColor: palette.primary }]}
               >
                 {isSavingProfile ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.saveProfileText, { color: palette.onPrimary }]}>Save Changes</Text>
+                  <Text style={[styles.primaryButtonText, { color: palette.onPrimary }]}>Save changes</Text>
                 )}
               </PressableScale>
             </View>
           ) : (
             <>
-              <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: palette.muted }]}>Department</Text>
-                <Text style={[styles.detailValue, { color: palette.foreground }]}>
-                  {currentActor?.department || '—'}
-                </Text>
-              </View>
-
-              <View style={[styles.divider, { backgroundColor: palette.divider }]} />
-
-              <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: palette.muted }]}>Job Title</Text>
-                <Text style={[styles.detailValue, { color: palette.foreground }]}>
-                  {currentActor?.title || '—'}
-                </Text>
-              </View>
+              {renderValueRow('Department', currentActor?.department || '—')}
+              {renderValueRow('Job title', currentActor?.title || '—')}
             </>
           )}
-        </View>
 
-        {/* Account Details Card */}
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.cardTitle, { color: palette.foreground }]}>Account Details</Text>
+          <Text style={[styles.sectionTitle, styles.sectionGap, { color: palette.foreground }]}>Account</Text>
+          {renderValueRow('User ID', currentActor?.id ?? '—')}
+          {renderValueRow('Permission role', roleText)}
+          {renderValueRow('Hierarchy role', hierarchyText)}
+          {renderValueRow('Status', 'Active', palette.loggedText)}
 
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>User ID</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>{currentActor?.id ?? '—'}</Text>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: palette.divider }]} />
-
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>Permission Role</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>
-              {currentActor?.permissionRole ?? currentActor?.role ?? '—'}
-            </Text>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: palette.divider }]} />
-
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>Hierarchy Role</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>
-              {currentActor?.hierarchyRole ?? 'user'}
-            </Text>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: palette.divider }]} />
-
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>Status</Text>
-            <Text style={[styles.detailValue, { color: colors.success }]}>Active</Text>
-          </View>
-        </View>
-
-        {/* Security & Password Card */}
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.cardTitle, styles.securityCardTitle, { color: palette.foreground }]}>Security</Text>
+          <View style={[styles.sectionHeaderRow, styles.sectionGap]}>
+            <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Security</Text>
             <PressableScale
               accessibilityLabel={showPasswordForm ? 'Cancel change password' : 'Change password'}
               accessibilityRole="button"
               onPress={() => setShowPasswordForm(!showPasswordForm)}
-              style={styles.changePwToggle}
+              style={styles.textAction}
             >
-              <Text style={[styles.changePwToggleText, { color: palette.primary }]}>
-                {showPasswordForm ? 'Cancel' : 'Change Password'}
+              <Text style={[styles.textActionLabel, { color: palette.primary }]}>
+                {showPasswordForm ? 'Cancel' : 'Change password'}
               </Text>
             </PressableScale>
           </View>
@@ -290,57 +233,44 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
             />
           ) : (
             <Text style={[styles.securityNotice, { color: palette.muted }]}>
-              Keep your credentials secure. Never share your password.
+              Keep your password private. Choose one you do not use anywhere else.
             </Text>
           )}
-        </View>
 
-        {/* Workspace Card */}
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.cardTitle, { color: palette.foreground }]}>Workspace</Text>
+          <Text style={[styles.sectionTitle, styles.sectionGap, { color: palette.foreground }]}>Workspace</Text>
+          {renderValueRow('Address', serverUrl ?? '—')}
+          {renderValueRow('Backend', humanize(config?.backend ?? 'native'))}
 
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>Address</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>{serverUrl ?? '—'}</Text>
+          {/* Destructive actions: red text rows at the bottom. */}
+          <View style={styles.dangerZone}>
+            <PressableScale
+              accessibilityLabel="Sign out"
+              accessibilityRole="button"
+              onPress={() => signOut()}
+              scaleTo={1}
+              style={[styles.dangerRow, { borderBottomColor: palette.hairline }]}
+            >
+              <Text style={[styles.dangerText, { color: palette.error }]}>Sign out</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Sign out of all devices"
+              accessibilityRole="button"
+              onPress={() => setConfirmKind('logout-all')}
+              scaleTo={1}
+              style={[styles.dangerRow, { borderBottomColor: palette.hairline }]}
+            >
+              <Text style={[styles.dangerText, { color: palette.error }]}>Sign out of all devices</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Disconnect workspace"
+              accessibilityRole="button"
+              onPress={() => setConfirmKind('disconnect')}
+              scaleTo={1}
+              style={[styles.dangerRow, { borderBottomColor: palette.hairline }]}
+            >
+              <Text style={[styles.dangerText, { color: palette.error }]}>Disconnect workspace</Text>
+            </PressableScale>
           </View>
-
-          <View style={[styles.divider, { backgroundColor: palette.divider }]} />
-
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: palette.muted }]}>Backend Engine</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>
-              {config?.backend ? config.backend.toUpperCase() : 'NATIVE'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Actions */}
-        <PressableScale
-          accessibilityLabel="Sign out"
-          accessibilityRole="button"
-          onPress={() => signOut()}
-          style={[styles.signOutButton, { backgroundColor: palette.card }]}
-        >
-          <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
-        </PressableScale>
-
-        <PressableScale
-          accessibilityLabel="Sign out of all devices"
-          accessibilityRole="button"
-          onPress={() => setConfirmKind('logout-all')}
-          style={[styles.signOutButton, { marginTop: spacing.sm, backgroundColor: palette.card }]}
-        >
-          <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out of All Devices</Text>
-        </PressableScale>
-
-        <PressableScale
-          accessibilityLabel="Disconnect workspace"
-          accessibilityRole="button"
-          onPress={() => setConfirmKind('disconnect')}
-          style={styles.disconnectButton}
-        >
-          <Text style={[styles.disconnectText, { color: palette.muted }]}>Disconnect Workspace</Text>
-        </PressableScale>
 
         <ConfirmDialog
           visible={confirmKind === 'logout-all'}
@@ -369,6 +299,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
           onCancel={() => setConfirmKind(null)}
           palette={palette}
         />
+        </View>
       </ScrollView>
     </View>
   );
@@ -376,131 +307,71 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  scrollContent: { flexGrow: 1 },
+  identity: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  userName: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.md,
+    fontWeight: '600',
+  },
+  email: { fontSize: typography.body, marginTop: 2 },
+  role: { fontSize: typography.caption, marginTop: 2 },
+  sheet: {
+    flexGrow: 1,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+  },
   msgBox: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  msgText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  card: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.sm,
-  },
-  avatar: {
-    alignSelf: 'center',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    ...shadows.sm,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  userName: {
-    fontSize: typography.heading,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  email: {
-    fontSize: typography.caption,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  badge: {
-    alignSelf: 'center',
-    borderRadius: borderRadius.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    marginTop: spacing.xs,
-  },
-  badgeText: { fontSize: typography.badge, fontWeight: '700' },
-  cardTitle: { fontSize: typography.heading, fontWeight: '700', marginBottom: spacing.md },
-  securityCardTitle: { marginBottom: 0 },
+  msgText: { fontSize: typography.caption, fontWeight: '600' },
+  sectionTitle: { fontSize: typography.heading, fontWeight: '600' },
+  sectionGap: { marginTop: spacing.xl },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    minHeight: 44,
   },
-  editToggle: { paddingVertical: spacing.xs },
-  editToggleText: { fontSize: typography.caption, fontWeight: '700' },
-  editForm: { marginTop: spacing.xs },
-  fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },
+  textAction: { minHeight: 44, justifyContent: 'center', paddingLeft: spacing.md },
+  textActionLabel: { fontSize: typography.caption, fontWeight: '600' },
+  row: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: 2 },
+  rowValue: { fontSize: typography.body },
   input: {
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     fontSize: typography.body,
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xs,
+    paddingHorizontal: 0,
   },
-  titleSuggestions: { marginTop: spacing.xs },
-  suggestionLabel: { fontSize: typography.badge, fontWeight: '600', marginBottom: 2 },
-  optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
-  chip: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginRight: spacing.sm,
-    minHeight: 34,
+  optionsScroll: { marginTop: spacing.xs },
+  chipScroll: { flexDirection: 'row', gap: spacing.sm },
+  primaryButton: {
+    alignItems: 'center',
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: spacing.lg,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
   },
-  chipActive: {},
-  chipText: { fontSize: typography.badge, fontWeight: '600' },
-  chipTextActive: { fontWeight: '700' },
-  saveProfileBtn: {
-    borderRadius: borderRadius.md,
-    minHeight: 44,
-    alignItems: 'center',
+  primaryButtonText: { fontSize: typography.body, fontWeight: '600' },
+  securityNotice: { fontSize: typography.caption, marginTop: spacing.xs },
+  dangerZone: { marginTop: spacing.xl },
+  dangerRow: {
     justifyContent: 'center',
-    marginTop: spacing.md,
-    ...shadows.sm,
+    minHeight: 52,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  saveProfileText: { fontSize: typography.body, fontWeight: '700' },
-  changePwToggle: { paddingVertical: spacing.xs },
-  changePwToggleText: { fontSize: typography.caption, fontWeight: '700' },
-  securityNotice: { fontSize: typography.caption, marginTop: spacing.sm },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-  },
-  detailLabel: { fontSize: typography.caption, fontWeight: '600' },
-  detailValue: { fontSize: typography.body, fontWeight: '500' },
-  divider: { height: 1, marginVertical: spacing.xs },
-  signOutButton: {
-    alignItems: 'center',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.error,
-    justifyContent: 'center',
-    minHeight: 48,
-    marginTop: spacing.md,
-    ...shadows.sm,
-  },
-  signOutText: { fontSize: typography.body, fontWeight: '700' },
-  disconnectButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 40,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  disconnectText: { fontSize: typography.caption, fontWeight: '600' },
+  dangerText: { fontSize: typography.body, fontWeight: '600' },
 });

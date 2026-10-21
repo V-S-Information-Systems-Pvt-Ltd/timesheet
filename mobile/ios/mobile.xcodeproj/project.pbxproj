@@ -11,6 +11,8 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		B10B8C122CA77C9B00000001 /* BarlowSemiCondensed-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B10B8C102CA77C9B00000001 /* BarlowSemiCondensed-Medium.ttf */; };
+		B10B8C132CA77C9B00000001 /* BarlowSemiCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B10B8C112CA77C9B00000001 /* BarlowSemiCondensed-SemiBold.ttf */; };
 		B10B8C012CA77C9B00000001 /* VsisSecureStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10B8C002CA77C9B00000001 /* VsisSecureStorage.swift */; };
 		B10B8C042CA77C9B00000003 /* VsisSecureStorageBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B10B8C032CA77C9B00000003 /* VsisSecureStorageBridge.m */; };
 /* End PBXBuildFile section */
@@ -24,6 +26,8 @@
 		5709B34CF0A7D63546082F79 /* Pods-mobile.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-mobile.release.xcconfig"; path = "Target Support Files/Pods-mobile/Pods-mobile.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-mobile.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-mobile.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = mobile/AppDelegate.swift; sourceTree = "<group>"; };
+		B10B8C102CA77C9B00000001 /* BarlowSemiCondensed-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = BarlowSemiCondensed-Medium.ttf; path = mobile/Fonts/BarlowSemiCondensed-Medium.ttf; sourceTree = "<group>"; };
+		B10B8C112CA77C9B00000001 /* BarlowSemiCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = BarlowSemiCondensed-SemiBold.ttf; path = mobile/Fonts/BarlowSemiCondensed-SemiBold.ttf; sourceTree = "<group>"; };
 		B10B8C002CA77C9B00000001 /* VsisSecureStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VsisSecureStorage.swift; path = mobile/VsisSecureStorage.swift; sourceTree = "<group>"; };
 		B10B8C022CA77C9B00000002 /* VsisSecureStorage-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "VsisSecureStorage-Bridging-Header.h"; path = "mobile/VsisSecureStorage-Bridging-Header.h"; sourceTree = "<group>"; };
 		B10B8C032CA77C9B00000003 /* VsisSecureStorageBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = VsisSecureStorageBridge.m; path = mobile/VsisSecureStorageBridge.m; sourceTree = "<group>"; };
@@ -49,6 +53,8 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				B10B8C002CA77C9B00000001 /* VsisSecureStorage.swift */,
+				B10B8C102CA77C9B00000001 /* BarlowSemiCondensed-Medium.ttf */,
+				B10B8C112CA77C9B00000001 /* BarlowSemiCondensed-SemiBold.ttf */,
 				B10B8C022CA77C9B00000002 /* VsisSecureStorage-Bridging-Header.h */,
 				B10B8C032CA77C9B00000003 /* VsisSecureStorageBridge.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
@@ -167,6 +173,8 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				B10B8C122CA77C9B00000001 /* BarlowSemiCondensed-Medium.ttf in Resources */,
+				B10B8C132CA77C9B00000001 /* BarlowSemiCondensed-SemiBold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -267,7 +275,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = mobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -275,7 +283,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.4.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -298,14 +306,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				INFOPLIST_FILE = mobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.4.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

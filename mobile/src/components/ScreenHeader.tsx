@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { spacing, typography, type Palette } from '../theme';
+import { fonts, spacing, typography, type Palette } from '../theme';
 
 interface ScreenHeaderProps {
   title: string;
@@ -77,9 +77,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   title: {
+    fontFamily: fonts.numeral,
     fontSize: typography.title,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontWeight: '600',
   },
   subtitle: {
     fontSize: typography.caption,

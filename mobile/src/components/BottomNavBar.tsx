@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, Platform } from 'react-native';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
 
@@ -23,7 +23,7 @@ interface TabItem {
 const TABS: TabItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: 'home' },
   { key: 'timesheets', label: 'Timesheets', icon: 'clock' },
-  { key: 'log-time', label: 'Log Time', icon: 'plus', isAction: true },
+  { key: 'log-time', label: 'Log time', icon: 'plus', isAction: true },
   { key: 'profile', label: 'Profile', icon: 'profile' },
 ];
 
@@ -42,8 +42,8 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
       style={[
         styles.container,
         {
-          backgroundColor: palette.card,
-          borderTopColor: palette.border,
+          backgroundColor: palette.sheet,
+          borderTopColor: palette.hairline,
         },
       ]}
     >
@@ -124,7 +124,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: Platform.OS === 'ios' ? spacing.xs : spacing.xs,
     width: '100%',
-    ...shadows.md,
   },
   tabRow: {
     flexDirection: 'row',
@@ -151,7 +150,7 @@ const styles = StyleSheet.create({
   iconWrapper: {
     width: 32,
     height: 32,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -180,7 +179,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.sm,
   },
   actionLabel: {
     fontWeight: '600',

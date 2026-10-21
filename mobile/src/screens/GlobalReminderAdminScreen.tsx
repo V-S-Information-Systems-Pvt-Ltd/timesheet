@@ -11,10 +11,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { spacing, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/EmptyState';
+import { adminStyles } from '../components/adminStyles';
 import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { GlobalReminderItem } from '../api/contracts';
@@ -140,7 +142,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
       return;
     }
     Alert.alert(
-      'Delete Global Reminder',
+      'Delete global reminder',
       `Are you sure you want to delete this company-wide reminder?\n\n"${reminder.message}"`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -161,8 +163,13 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
     );
   };
 
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditingReminder(null);
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[adminStyles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
@@ -172,42 +179,38 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
+            style={[adminStyles.headerAction, isOffline && adminStyles.disabled, { backgroundColor: palette.primary }]}
           >
-            <Icon color={palette.onPrimary} name="plus" size={16} />
-            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New Alert</Text>
+            <Text style={[adminStyles.headerActionText, { color: palette.onPrimary }]}>New reminder</Text>
           </PressableScale>
         }
         subtitle="Broadcast company-wide reminder alerts"
-        title="Global Reminders"
+        title="Global reminders"
       />
 
-      <View style={styles.content}>
+      <View style={[adminStyles.sheet, { backgroundColor: palette.sheet }]}>
         {errorMessage ? (
-          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
-            <Icon color={colors.danger} name="alert-circle" size={18} />
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          <View accessibilityRole="alert" style={[adminStyles.errorBanner, { backgroundColor: palette.errorBoxBg }]}>
+            <Text style={[adminStyles.errorBannerText, { color: palette.error }]}>{errorMessage}</Text>
           </View>
         ) : null}
 
         {loading && !refreshing ? (
-          <View style={styles.centerContainer}>
+          <View style={adminStyles.centered}>
             <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading global reminders…</Text>
+            <Text style={[adminStyles.muted, { color: palette.muted }]}>Loading global reminders…</Text>
           </View>
         ) : (
           <FlatList
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={adminStyles.listContent}
             data={reminders}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Icon color={palette.muted} name="bell" size={40} />
-                <Text style={[styles.emptyTitle, { color: palette.foreground }]}>No global reminders</Text>
-                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-                  Broadcast alerts to all members across the workspace.
-                </Text>
-              </View>
+              <EmptyState
+                icon="bell"
+                message="No global reminders yet. Add one to alert every member of the workspace."
+                palette={palette}
+              />
             }
             refreshControl={
               <RefreshControl
@@ -220,35 +223,33 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
             renderItem={({ item }) => (
               <View
                 accessibilityLabel={`Global Reminder: ${item.message}`}
-                style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+                style={[adminStyles.row, { borderBottomColor: palette.hairline }]}
               >
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardInfo}>
-                    <Text style={[styles.messageText, { color: palette.foreground }]}>{item.message}</Text>
-                    <Text style={[styles.timeText, { color: palette.primary }]}>
-                      {item.remind_at ? formatLocalDateTime(new Date(item.remind_at)).replace('T', ' ') : ''}
-                    </Text>
-                  </View>
-                  <View style={styles.cardActions}>
-                    <PressableScale
-                      accessibilityLabel={`Edit reminder: ${item.message}`}
-                      accessibilityRole="button"
-                      disabled={isOffline}
-                      onPress={() => handleOpenEdit(item)}
-                      style={[styles.iconButton, { backgroundColor: palette.badgeBg, marginRight: spacing.xs }, isOffline && { opacity: 0.5 }]}
-                    >
-                      <Icon color={palette.foreground} name="edit" size={16} />
-                    </PressableScale>
-                    <PressableScale
-                      accessibilityLabel={`Delete reminder: ${item.message}`}
-                      accessibilityRole="button"
-                      disabled={isOffline}
-                      onPress={() => handleDelete(item)}
-                      style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
-                    >
-                      <Icon color={colors.danger} name="trash" size={16} />
-                    </PressableScale>
-                  </View>
+                <View style={adminStyles.rowMain}>
+                  <Text style={[adminStyles.rowTitle, { color: palette.foreground }]}>{item.message}</Text>
+                  <Text style={[adminStyles.rowMeta, adminStyles.numeral, { color: palette.muted }]}>
+                    {item.remind_at ? formatLocalDateTime(new Date(item.remind_at)).replace('T', ' ') : ''}
+                  </Text>
+                </View>
+                <View style={adminStyles.rowActions}>
+                  <PressableScale
+                    accessibilityLabel={`Edit reminder: ${item.message}`}
+                    accessibilityRole="button"
+                    disabled={isOffline}
+                    onPress={() => handleOpenEdit(item)}
+                    style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+                  >
+                    <Icon color={palette.primary} name="edit" size={18} />
+                  </PressableScale>
+                  <PressableScale
+                    accessibilityLabel={`Delete reminder: ${item.message}`}
+                    accessibilityRole="button"
+                    disabled={isOffline}
+                    onPress={() => handleDelete(item)}
+                    style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+                  >
+                    <Icon color={palette.error} name="trash" size={18} />
+                  </PressableScale>
                 </View>
               </View>
             )}
@@ -257,16 +258,19 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
         )}
       </View>
 
-      {/* Create / Edit Global Reminder Modal */}
-      <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={() => { setModalVisible(false); setEditingReminder(null); }}>
-        <View style={[styles.modalOverlay, bounds]}>
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>
-              {editingReminder ? 'Edit Global Reminder' : 'Broadcast Global Reminder'}
+      <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={closeModal}>
+        <View style={[adminStyles.modalOverlay, bounds]}>
+          <ScrollView
+            contentContainerStyle={[adminStyles.modalCard, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
+            keyboardShouldPersistTaps="handled"
+            style={adminStyles.modalScroll}
+          >
+            <Text style={[adminStyles.modalTitle, { color: palette.foreground }]}>
+              {editingReminder ? 'Edit global reminder' : 'New global reminder'}
             </Text>
-            {modalError ? <Text style={styles.modalError}>{modalError}</Text> : null}
+            {modalError ? <Text style={[adminStyles.modalError, { color: palette.error }]}>{modalError}</Text> : null}
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Reminder Message *</Text>
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Message</Text>
             <TextInput
               accessibilityLabel="Reminder Message"
               multiline
@@ -274,43 +278,40 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
               onChangeText={setMessage}
               placeholder="e.g. Please submit all pending timesheets by 5 PM today."
               placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, styles.multilineInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              style={[adminStyles.input, styles.multilineInput, { borderColor: palette.controlBorder, color: palette.foreground }]}
               value={message}
             />
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Scheduled Time * (YYYY-MM-DDTHH:MM)</Text>
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Scheduled time (YYYY-MM-DDTHH:MM)</Text>
             <TextInput
               accessibilityLabel="Scheduled Time"
               onChangeText={setRemindAt}
               placeholder="YYYY-MM-DDTHH:MM"
               placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              style={[adminStyles.input, adminStyles.numeral, { borderColor: palette.controlBorder, color: palette.foreground }]}
               value={remindAt}
             />
 
-            <View style={styles.modalActions}>
+            <View style={adminStyles.modalActions}>
               <PressableScale
                 accessibilityLabel="Cancel Reminder"
                 accessibilityRole="button"
-                onPress={() => {
-                  setModalVisible(false);
-                  setEditingReminder(null);
-                }}
-                style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
+                onPress={closeModal}
+                style={[adminStyles.btn, adminStyles.btnOutline, { borderColor: palette.controlBorder }]}
               >
-                <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
+                <Text style={[adminStyles.btnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
               <PressableScale
                 accessibilityLabel={editingReminder ? 'Save Reminder Changes' : 'Publish Reminder'}
                 accessibilityRole="button"
                 disabled={submitting || isOffline}
                 onPress={handleModalSubmit}
-                style={[styles.modalBtn, styles.primaryModalBtn, (submitting || isOffline) && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
+                style={[adminStyles.btn, (submitting || isOffline) && adminStyles.disabled, { backgroundColor: palette.primary }]}
               >
                 {submitting ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.primaryModalBtnText, { color: palette.onPrimary }]}>
+                  <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>
                     {editingReminder ? 'Save' : 'Publish'}
                   </Text>
                 )}
@@ -324,170 +325,5 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  headerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  headerActionText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  errorBannerText: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    flex: 1,
-  },
-  listContent: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  messageText: {
-    fontSize: typography.body,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  timeText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  loadingText: {
-    fontSize: typography.caption,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-    gap: spacing.xs,
-  },
-  emptyTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-  },
-  emptySubtitle: {
-    fontSize: typography.caption,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-    width: '100%',
-  },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    ...shadows.md,
-  },
-  modalTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  modalError: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-  },
-  inputLabel: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-    marginBottom: spacing.sm,
-  },
-  multilineInput: {
-    height: 70,
-    textAlignVertical: 'top',
-  },
-  modalActions: {
-    flexWrap: 'wrap',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryModalBtn: {},
-  modalBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  primaryModalBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
+  multilineInput: { minHeight: 88, paddingTop: spacing.sm, textAlignVertical: 'top' },
 });

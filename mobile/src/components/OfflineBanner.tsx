@@ -47,13 +47,13 @@ export function OfflineBanner({
     const parts = ['Working offline'];
     if (pendingCount > 0) parts.push(`${pendingCount} queued`);
     if (failedCount > 0) parts.push(`${failedCount} failed`);
-    text = parts.join(' • ');
+    text = parts.join(', ');
   } else if (isSyncing) {
-    text = `Syncing changes... (${pendingCount} remaining)`;
+    text = `Syncing changes, ${pendingCount} remaining`;
   } else if (failedCount > 0) {
     text = `${failedCount} sync item${failedCount > 1 ? 's' : ''} failed`;
   } else {
-    text = `${pendingCount} changes pending sync`;
+    text = `${pendingCount} changes waiting to sync`;
   }
 
   const hasFailedItems = failedCount > 0 && failedItems.length > 0;
@@ -66,8 +66,8 @@ export function OfflineBanner({
         style={[
           styles.banner,
           {
-            backgroundColor: isOffline ? palette.badgeBg : isErrorColor ? colors.error : palette.primary,
-            borderBottomColor: palette.border,
+            backgroundColor: isOffline ? palette.sheet : isErrorColor ? colors.error : palette.primary,
+            borderBottomColor: palette.hairline,
           },
         ]}
       >
@@ -99,19 +99,19 @@ export function OfflineBanner({
             {isSyncing ? (
               <ActivityIndicator color={palette.onPrimary} size="small" />
             ) : (
-              <Text style={[styles.syncBtnText, { color: palette.onPrimary }]}>Sync Now</Text>
+              <Text style={[styles.syncBtnText, { color: palette.onPrimary }]}>Sync now</Text>
             )}
           </Pressable>
         ) : null}
       </View>
 
       {hasFailedItems ? (
-        <View style={[styles.failedContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <View style={[styles.failedContainer, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}>
           {failedItems.map((item) => (
-            <View key={item.id} style={[styles.failedItem, { borderBottomColor: palette.border }]}>
+            <View key={item.id} style={[styles.failedItem, { borderBottomColor: palette.hairline }]}>
               <View style={styles.failedItemInfo}>
                 <Text style={[styles.failedItemType, { color: palette.foreground }]}>
-                  {item.type.replace('_', ' ').toUpperCase()}
+                  {item.type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())}
                 </Text>
                 {item.lastError ? (
                   <Text style={[styles.failedItemError, { color: colors.error }]}>
@@ -149,7 +149,7 @@ export function OfflineBanner({
                     onPress={() => onDiscardItem(item.id)}
                     style={[styles.itemActionBtn, { backgroundColor: colors.error }]}
                   >
-                    <Text style={[styles.itemActionBtnText, { color: '#ffffff' }]}>Discard</Text>
+                    <Text style={[styles.itemActionBtnText, styles.discardText]}>Discard</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -187,12 +187,12 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   syncBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-    borderRadius: borderRadius.xs,
+    borderRadius: borderRadius.control,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     minHeight: 28,
     justifyContent: 'center',
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   },
   syncBtnText: {
     fontSize: typography.badge,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   failedContainer: {
     borderBottomWidth: 1,
@@ -234,7 +234,10 @@ const styles = StyleSheet.create({
   itemActionBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: borderRadius.xs,
+    borderRadius: borderRadius.control,
+  },
+  discardText: {
+    color: '#FFFFFF',
   },
   itemActionBtnText: {
     fontSize: typography.badge,

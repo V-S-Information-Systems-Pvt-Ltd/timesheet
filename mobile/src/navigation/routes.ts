@@ -10,6 +10,7 @@ export type ChildScreen =
   | 'edit-time'
   | 'layout-customizer'
   | 'admin-projects'
+  | 'admin-departments'
   | 'admin-activities'
   | 'admin-users'
   | 'admin-settings'
@@ -128,6 +129,15 @@ export const ROUTE_REGISTRY: Record<AppRoute, RouteMeta> = {
     parentTab: 'more',
     icon: 'folder',
     requiredCapability: 'canManageProjects',
+    isRootTab: false,
+  },
+  'admin-departments': {
+    key: 'admin-departments',
+    title: 'Departments',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'folder',
+    requiredCapability: 'canManageSettings',
     isRootTab: false,
   },
   'admin-activities': {

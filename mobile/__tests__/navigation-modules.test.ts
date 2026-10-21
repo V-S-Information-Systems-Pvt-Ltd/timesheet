@@ -5,6 +5,7 @@ import {
   resolveEffectiveLayout,
   getVisibleModules,
 } from '../src/navigation/modules';
+import { canAccessRoute } from '../src/navigation/routes';
 import type { MobileLayout } from '../src/api/contracts';
 
 describe('mobile navigation modules', () => {
@@ -78,5 +79,18 @@ describe('mobile navigation modules', () => {
     expect(moreIds).toContain('admin-activities');
     expect(moreIds).toContain('admin-users');
     expect(moreIds).toContain('admin-settings');
+  });
+
+  it('gates the departments route on the admin-only canManageSettings capability', () => {
+    const base = {
+      canViewTeam: true,
+      canManageProjects: true,
+      canManageActivities: true,
+      canManageUsers: true,
+      canManageSettings: false,
+    };
+    expect(canAccessRoute('admin-departments', { ...base, canManageSettings: true })).toBe(true);
+    expect(canAccessRoute('admin-departments', base)).toBe(false);
+    expect(canAccessRoute('admin-departments', null)).toBe(false);
   });
 });

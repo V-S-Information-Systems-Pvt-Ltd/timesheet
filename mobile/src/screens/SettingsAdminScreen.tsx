@@ -7,10 +7,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { spacing, typography, borderRadius, useTheme } from '../theme';
+import { DEFAULT_BRANDING } from '../api/contracts';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
-import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
+import { adminStyles } from '../components/adminStyles';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   useSessionActions,
@@ -50,7 +52,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
 
   // Workspace Branding State
   const [appName, setAppName] = useState(branding?.appName || 'VSIS Timesheet');
-  const [primaryColor, setPrimaryColor] = useState(branding?.primaryColor || '#1E73BE');
+  const [primaryColor, setPrimaryColor] = useState(branding?.primaryColor || DEFAULT_BRANDING.primaryColor);
   const [logoUrl, setLogoUrl] = useState(branding?.logoUrl || '');
   const [savingBranding, setSavingBranding] = useState(false);
   const [resetConfirmVisible, setResetConfirmVisible] = useState(false);
@@ -150,7 +152,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
     }
     const trimmedColor = primaryColor.trim().toUpperCase();
     if (!/^#[0-9A-Fa-f]{6}$/.test(trimmedColor)) {
-      setBrandingError('Primary color must be a valid 6-digit hex code (e.g. #1E73BE).');
+      setBrandingError(`Primary color must be a valid 6-digit hex code (e.g. ${DEFAULT_BRANDING.primaryColor}).`);
       return;
     }
     const trimmedLogo = logoUrl.trim();
@@ -192,7 +194,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
     try {
       await resetBranding();
       setAppName('VSIS Timesheet');
-      setPrimaryColor('#1E73BE');
+      setPrimaryColor(DEFAULT_BRANDING.primaryColor);
       setLogoUrl('');
       setBrandingSuccess('Restored default workspace branding.');
     } catch (err) {
@@ -212,102 +214,68 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
     setLogFormVersion(version => version + 1);
   };
 
+  const renderModeButton = (label: string, a11y: string, mode: BackfillSettings['mode']) => (
+    <Chip
+      accessibilityLabel={a11y}
+      active={backfillMode === mode}
+      label={label}
+      onPress={() => setBackfillMode(mode)}
+      palette={palette}
+    />
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[adminStyles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
         subtitle="Backfill policy and administrative time logging"
-        title="Workspace Settings"
+        title="Workspace settings"
       />
 
+      <View style={[adminStyles.sheet, { backgroundColor: palette.sheet }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {loading ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading settings…</Text>
+            <Text style={[adminStyles.muted, { color: palette.muted }]}>Loading settings…</Text>
           </View>
         ) : (
           <>
-            {/* Section 1: Backfill Policy */}
-            <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-              <View style={styles.sectionHeader}>
-                <Icon color={palette.primary} name="calendar" size={20} />
-                <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Backfill Window Policy</Text>
-              </View>
+            <View style={[styles.section, { borderBottomColor: palette.hairline }]}>
+              <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Backfill window policy</Text>
               <Text style={[styles.sectionDesc, { color: palette.muted }]}>
                 Controls how far back regular users can log or edit timesheets. Administrators are always exempt.
               </Text>
 
-              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-              {successMessage ? <Text style={[styles.successText, { color: palette.successText }]}>{successMessage}</Text> : null}
+              {errorMessage ? <Text style={[styles.messageText, { color: palette.error }]}>{errorMessage}</Text> : null}
+              {successMessage ? <Text style={[styles.messageText, { color: palette.loggedText }]}>{successMessage}</Text> : null}
 
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Policy Mode</Text>
-              <View style={styles.modeRow}>
-                <PressableScale
-                  accessibilityLabel="Fixed Days Mode"
-                  accessibilityRole="button"
-                  onPress={() => setBackfillMode('days')}
-                  style={[
-                    styles.modeBtn,
-                    {
-                      backgroundColor: backfillMode === 'days' ? palette.primary : palette.badgeBg,
-                      borderColor: backfillMode === 'days' ? palette.primary : palette.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      { color: backfillMode === 'days' ? palette.onPrimary : palette.foreground },
-                    ]}
-                  >
-                    Rolling Days Window
-                  </Text>
-                </PressableScale>
-
-                <PressableScale
-                  accessibilityLabel="Current Month Mode"
-                  accessibilityRole="button"
-                  onPress={() => setBackfillMode('month_start')}
-                  style={[
-                    styles.modeBtn,
-                    {
-                      backgroundColor: backfillMode === 'month_start' ? palette.primary : palette.badgeBg,
-                      borderColor: backfillMode === 'month_start' ? palette.primary : palette.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      { color: backfillMode === 'month_start' ? palette.onPrimary : palette.foreground },
-                    ]}
-                  >
-                    Current Month Start
-                  </Text>
-                </PressableScale>
+              <Text style={[adminStyles.label, { color: palette.muted }]}>Policy mode</Text>
+              <View style={adminStyles.chipRow}>
+                {renderModeButton('Rolling days window', 'Fixed Days Mode', 'days')}
+                {renderModeButton('Current month start', 'Current Month Mode', 'month_start')}
               </View>
 
               {backfillMode === 'days' ? (
                 <>
-                  <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Days Window (0 - 365)</Text>
+                  <Text style={[adminStyles.label, { color: palette.muted }]}>Days window (0 to 365)</Text>
                   <TextInput
                     accessibilityLabel="Days Window"
                     keyboardType="number-pad"
                     onChangeText={setWindowDays}
-                    style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                    style={[adminStyles.input, adminStyles.numeral, { borderColor: palette.controlBorder, color: palette.foreground }]}
                     value={windowDays}
                   />
                 </>
               ) : (
                 <>
-                  <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Grace Days Prior Month (0 - 365)</Text>
+                  <Text style={[adminStyles.label, { color: palette.muted }]}>Grace days into prior month (0 to 365)</Text>
                   <TextInput
                     accessibilityLabel="Extra Days"
                     keyboardType="number-pad"
                     onChangeText={setExtraDays}
-                    style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                    style={[adminStyles.input, adminStyles.numeral, { borderColor: palette.controlBorder, color: palette.foreground }]}
                     value={extraDays}
                   />
                 </>
@@ -323,87 +291,69 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 {savingPolicy ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Save Policy</Text>
+                  <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>Save policy</Text>
                 )}
               </PressableScale>
             </View>
 
-            {/* Section 2: Admin Backfill (Log on behalf of another user) */}
-            <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-              <View style={styles.sectionHeader}>
-                <Icon color={palette.primary} name="time" size={20} />
-                <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Log Time For User</Text>
-              </View>
+            <View style={[styles.section, { borderBottomColor: palette.hairline }]}>
+              <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Log time for a user</Text>
               <Text style={[styles.sectionDesc, { color: palette.muted }]}>
                 Record timesheet entries on behalf of team members. Exempt from backfill window constraints.
               </Text>
 
-              {logSuccess ? <Text style={[styles.successText, { color: palette.successText }]}>{logSuccess}</Text> : null}
+              {logSuccess ? <Text style={[styles.messageText, { color: palette.loggedText }]}>{logSuccess}</Text> : null}
 
-              {/* User Selector */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Select User</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {users.map((u) => (
-                  <PressableScale
-                    key={u.id}
-                    accessibilityLabel={`Select user ${u.name || u.email}`}
-                    accessibilityRole="button"
-                    onPress={() => setSelectedUserId(u.id)}
-                    style={[
-                      styles.pickerPill,
-                      {
-                        backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
-                        borderColor: selectedUserId === u.id ? palette.primary : palette.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerPillText,
-                        { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground },
-                      ]}
-                    >
-                      {u.name || u.email}
-                    </Text>
-                  </PressableScale>
-                ))}
+              <Text style={[adminStyles.label, { color: palette.muted }]}>User</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={adminStyles.chipRow}>
+                  {users.map((u) => (
+                    <Chip
+                      key={u.id}
+                      accessibilityLabel={`Select user ${u.name || u.email}`}
+                      active={selectedUserId === u.id}
+                      label={u.name || u.email}
+                      onPress={() => setSelectedUserId(u.id)}
+                      palette={palette}
+                    />
+                  ))}
+                </View>
               </ScrollView>
 
               <TimeEntryForm key={logFormVersion} mode="create" isDarkMode={_isDarkMode}
-                onSubmit={handleAdminLogTime} submitLabel="Log Entry" />
+                onSubmit={handleAdminLogTime} submitLabel="Log entry" />
             </View>
 
-            {/* 3. Workspace Branding Customization (Super-Admin) */}
             {effectiveActor?.capabilities?.canManageWorkspaceCustomization ? (
-              <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-                <View style={styles.sectionHeader}>
-                  <Icon name="settings" size={18} color={palette.primary} />
-                  <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Workspace Branding</Text>
-                </View>
-                <Text style={[styles.sectionDesc, { color: palette.placeholder }]}>
-                  Customize application name, primary brand color, and logo across web and mobile
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Workspace branding</Text>
+                <Text style={[styles.sectionDesc, { color: palette.muted }]}>
+                  Customize application name, primary brand color, and logo across web and mobile.
                 </Text>
 
-                {brandingError ? <Text style={styles.errorText}>{brandingError}</Text> : null}
-                {brandingSuccess ? <Text style={[styles.successText, { color: palette.successText }]}>{brandingSuccess}</Text> : null}
+                {brandingError ? <Text style={[styles.messageText, { color: palette.error }]}>{brandingError}</Text> : null}
+                {brandingSuccess ? <Text style={[styles.messageText, { color: palette.loggedText }]}>{brandingSuccess}</Text> : null}
 
-                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Application Name</Text>
+                <Text style={[adminStyles.label, { color: palette.muted }]}>Application name</Text>
                 <TextInput
                   accessibilityLabel="App Name"
                   maxLength={50}
                   onChangeText={setAppName}
                   placeholder="VSIS Timesheet"
                   placeholderTextColor={palette.placeholder}
-                  style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                  style={[adminStyles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
                   value={appName}
                 />
 
-                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Primary Color (6-digit Hex)</Text>
+                <Text style={[adminStyles.label, { color: palette.muted }]}>Primary color (6-digit hex)</Text>
                 <View style={styles.colorRow}>
                   <View
                     style={[
                       styles.colorSwatch,
-                      { backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : '#1E73BE' },
+                      {
+                        backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : DEFAULT_BRANDING.primaryColor,
+                        borderColor: palette.controlBorder,
+                      },
                     ]}
                   />
                   <TextInput
@@ -411,18 +361,19 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                     autoCapitalize="characters"
                     maxLength={7}
                     onChangeText={(t) => setPrimaryColor(t.toUpperCase())}
-                    placeholder="#1E73BE"
+                    placeholder={DEFAULT_BRANDING.primaryColor}
                     placeholderTextColor={palette.placeholder}
                     style={[
-                      styles.input,
+                      adminStyles.input,
+                      adminStyles.numeral,
                       styles.colorInput,
-                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                      { borderColor: palette.controlBorder, color: palette.foreground },
                     ]}
                     value={primaryColor}
                   />
                 </View>
 
-                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Logo URL (HTTPS)</Text>
+                <Text style={[adminStyles.label, { color: palette.muted }]}>Logo URL (HTTPS)</Text>
                 <TextInput
                   accessibilityLabel="Logo URL"
                   autoCapitalize="none"
@@ -430,26 +381,24 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                   onChangeText={setLogoUrl}
                   placeholder="https://example.com/logo.png"
                   placeholderTextColor={palette.placeholder}
-                  style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                  style={[adminStyles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
                   value={logoUrl}
                 />
 
-                <View style={styles.brandingButtonsRow}>
+                <View style={adminStyles.modalActions}>
                   <PressableScale
                     accessibilityLabel="Reset Branding"
                     accessibilityRole="button"
                     disabled={savingBranding || isOffline}
                     onPress={handleResetBranding}
                     style={[
-                      styles.resetBrandingBtn,
-                      {
-                        backgroundColor: palette.badgeBg,
-                        borderColor: palette.border,
-                        opacity: savingBranding || isOffline ? 0.5 : 1,
-                      },
+                      adminStyles.btn,
+                      adminStyles.btnOutline,
+                      { borderColor: palette.controlBorder },
+                      (savingBranding || isOffline) && adminStyles.disabled,
                     ]}
                   >
-                    <Text style={[styles.resetBrandingText, { color: palette.foreground }]}>Reset</Text>
+                    <Text style={[adminStyles.btnText, { color: palette.foreground }]}>Reset</Text>
                   </PressableScale>
 
                   <PressableScale
@@ -458,17 +407,15 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                     disabled={savingBranding || isOffline}
                     onPress={handleSaveBranding}
                     style={[
-                      styles.saveBrandingBtn,
-                      {
-                        backgroundColor: palette.primary,
-                        opacity: savingBranding || isOffline ? 0.5 : 1,
-                      },
+                      adminStyles.btn,
+                      { backgroundColor: palette.primary },
+                      (savingBranding || isOffline) && adminStyles.disabled,
                     ]}
                   >
                     {savingBranding ? (
                       <ActivityIndicator color={palette.onPrimary} size="small" />
                     ) : (
-                      <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Save Branding</Text>
+                      <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>Save branding</Text>
                     )}
                   </PressableScale>
                 </View>
@@ -477,6 +424,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
           </>
         )}
       </ScrollView>
+      </View>
 
       <ConfirmDialog
         visible={resetConfirmVisible}
@@ -493,158 +441,33 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.lg,
-  },
+  scrollContent: { paddingBottom: spacing.xxl },
   centerContainer: {
     paddingVertical: spacing.xxl,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  loadingText: {
-    fontSize: typography.caption,
+  section: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    ...shadows.sm,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-  },
-  sectionDesc: {
-    fontSize: typography.caption,
-    lineHeight: 18,
-    marginBottom: spacing.md,
-  },
-  fieldLabel: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: 6,
-    marginTop: spacing.sm,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-    marginBottom: spacing.xs,
-  },
-  colorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
+  sectionTitle: { fontSize: typography.heading, fontWeight: '600' },
+  sectionDesc: { fontSize: typography.caption, lineHeight: 18, marginTop: spacing.xs },
+  messageText: { fontSize: typography.caption, fontWeight: '600', marginTop: spacing.sm },
+  colorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   colorSwatch: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
   },
-  colorInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  brandingButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  resetBrandingBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resetBrandingText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  saveBrandingBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  pickerScroll: {
-    flexDirection: 'row',
-    marginBottom: spacing.xs,
-  },
-  pickerPill: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    marginRight: spacing.xs,
-  },
-  pickerPillText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
+  colorInput: { flex: 1 },
   saveBtn: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    marginTop: spacing.lg,
+    minHeight: 52,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  saveBtnText: {
-    fontSize: typography.body,
-    fontWeight: '700',
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  successText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
   },
 });

@@ -11,7 +11,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { DateChooserModal } from './DateChooserModal';
@@ -19,6 +19,8 @@ import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
+import { useBackfillMinDate } from '../utils/use-backfill-min-date';
+import { HOURS_STEP, stepHours } from '../utils/hours-stepper';
 import {
   ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS,
   newEntrySchema, logEntrySchema, normalizeClassification,
@@ -43,7 +45,7 @@ export interface TimeEntryFormInitialValues {
 /** The fields carrying their own validation message, in visual order. */
 type FieldKey = 'logDate' | 'entryType' | 'projectId' | 'activityTypeId' | 'activityCode' | 'ticketNumber' | 'customer' | 'activityOther' | 'hoursWorked' | 'workDone';
 
-const FIELD_ORDER: FieldKey[] = ['logDate', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'customer', 'ticketNumber', 'activityOther', 'hoursWorked', 'workDone'];
+const FIELD_ORDER: FieldKey[] = ['logDate', 'hoursWorked', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'customer', 'ticketNumber', 'activityOther', 'workDone'];
 
 const QUICK_PROJECT_COUNT = 4;
 
@@ -58,6 +60,8 @@ interface FormValues {
   activityOther: string;
   hoursWorked: string;
   workDone: string;
+  /** Earliest writable date; unset until the backfill window loads. */
+  minLogDate?: string;
 }
 
 function formInput(values: FormValues, legacy: boolean): CreateTimesheetInput {
@@ -74,6 +78,9 @@ function validateField(key: FieldKey, values: FormValues, legacy: boolean): stri
   const result = (legacy ? logEntrySchema : newEntrySchema).safeParse(formInput(values, legacy));
   if (key === 'hoursWorked' && (!Number.isFinite(Number(values.hoursWorked)) || Number(values.hoursWorked) < 0.25 || Number(values.hoursWorked) > 24)) {
     return 'Please enter valid hours between 0.25 and 24.';
+  }
+  if (key === 'logDate' && values.minLogDate && values.logDate < values.minLogDate) {
+    return `Date is before the earliest allowed date (${values.minLogDate}).`;
   }
   if (!legacy && key === 'entryType' && !values.entryType) return 'Please select a type.';
   if (!legacy && key === 'activityCode' && !values.activityCode) return values.entryType ? 'Please select an activity.' : undefined;
@@ -111,6 +118,7 @@ export function TimeEntryForm({
 
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
+  const minLogDate = useBackfillMinDate(today);
 
   const legacy = mode === 'edit' && !initialValues?.entryType;
   const [entryType, setEntryType] = useState<EntryType | ''>(initialValues?.entryType || '');
@@ -158,8 +166,8 @@ export function TimeEntryForm({
   const formOffsetRef = useRef(0);
 
   const currentValues = useCallback(
-    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone }),
-    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone]
+    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone, minLogDate }),
+    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone, minLogDate]
   );
 
   const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
@@ -188,6 +196,11 @@ export function TimeEntryForm({
     },
     [applyFieldResult, currentValues, legacy]
   );
+
+  // An initial or drafted date outside the window reports once the window is known.
+  useEffect(() => {
+    if (minLogDate && logDate < minLogDate) touchedFieldsRef.current.add('logDate');
+  }, [minLogDate, logDate]);
 
   // Once a field has been touched it re-validates as the user edits, so a
   // corrected field stops reporting without waiting for another submit.
@@ -301,12 +314,6 @@ export function TimeEntryForm({
     },
     [touchField]
   );
-
-  function addHours(delta: number) {
-    const current = parseFloat(hoursWorked) || 0;
-    const updated = Math.min(24, Math.max(0, current + delta));
-    setHoursWorked(updated > 0 ? String(updated) : '');
-  }
 
   function setDirectHours(hrs: number) {
     setHoursWorked(String(hrs));
@@ -427,17 +434,46 @@ export function TimeEntryForm({
     );
   }
 
-  const borderFor = (key: FieldKey) => (fieldErrors[key] ? palette.error : palette.border);
+  const chipFill = (active: boolean, errorKey?: FieldKey) => ({
+    backgroundColor: active ? palette.foreground : palette.sheet,
+    borderColor: active
+      ? palette.foreground
+      : errorKey && fieldErrors[errorKey]
+      ? palette.error
+      : palette.controlBorder,
+  });
+  const chipInk = (active: boolean) => ({ color: active ? palette.paper : palette.foreground });
+
+  /** A label-over-value row: muted label, the value or control, hairline below. */
+  function renderRow(key: FieldKey, label: string, body: React.ReactNode, labelRight?: React.ReactNode) {
+    return (
+      <View
+        onLayout={measureField(key)}
+        style={[styles.row, { borderBottomColor: fieldErrors[key] ? palette.error : palette.hairline }]}
+      >
+        <View style={styles.rowLabelLine}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>{label}</Text>
+          {labelRight}
+        </View>
+        {body}
+        {renderFieldError(key)}
+      </View>
+    );
+  }
+
+  const ticketRequired = !legacy && entryType && activityCode ? requiresTicketNumber(entryType, activityCode) : false;
+  const otherRequired = !legacy && entryType && activityCode ? requiresActivityOther(entryType, activityCode) : false;
+  const detailKey: FieldKey = ticketRequired ? 'ticketNumber' : 'activityOther';
 
   return (
-    <View onLayout={measureForm} style={styles.formContainer}>
+    <View onLayout={measureForm} style={[styles.formContainer, { backgroundColor: palette.sheet }]}>
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
         </View>
       ) : null}
 
-      {/* Copy Last Entry Banner */}
+      {/* Copy last entry */}
       {mode === 'create' && lastEntry ? (
         <PressableScale
           accessibilityLabel={`Copy last entry: ${lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'} ${lastEntry.hours_worked} hours`}
@@ -453,497 +489,373 @@ export function TimeEntryForm({
             setHoursWorked(String(lastEntry.hours_worked));
             setWorkDone(lastEntry.work_done || '');
           }}
-          style={[styles.copyLastCard, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}
+          scaleTo={1}
+          style={[styles.copyLast, { borderBottomColor: palette.hairline }]}
         >
           <Icon color={palette.primary} name="clock" size={16} />
           <Text numberOfLines={1} style={[styles.copyLastText, { color: palette.primary }]}>
-            Copy last entry: {lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'} • {lastEntry.hours_worked}h
+            Copy last entry: {lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'}, {lastEntry.hours_worked} h
           </Text>
         </PressableScale>
       ) : null}
 
-      {/* Date Selector */}
-      <View onLayout={measureField('logDate')} style={styles.fieldGroup}>
-        <View style={styles.fieldLabelRow}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
-          {formattedDatePreview ? (
-            <Text style={[styles.datePreviewText, { color: palette.primary }]}>{formattedDatePreview}</Text>
-          ) : null}
-        </View>
-        <View style={styles.dateRow}>
+      {/* Date: chips for the common days, the field for anything else */}
+      {renderRow(
+        'logDate',
+        'Date',
+        <>
+          <View style={styles.chipLine}>
+            <PressableScale
+              accessibilityLabel="Set to today"
+              accessibilityRole="button"
+              accessibilityState={{ selected: logDate === today }}
+              onPress={() => setLogDate(today)}
+              style={[styles.chip, chipFill(logDate === today)]}
+            >
+              <Text style={[styles.chipText, chipInk(logDate === today)]}>Today</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Set to yesterday"
+              accessibilityRole="button"
+              accessibilityState={{ selected: logDate === yesterday }}
+              onPress={() => setLogDate(yesterday)}
+              style={[styles.chip, chipFill(logDate === yesterday)]}
+            >
+              <Text style={[styles.chipText, chipInk(logDate === yesterday)]}>Yesterday</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Open entry date picker"
+              accessibilityRole="button"
+              accessibilityState={{ selected: logDate !== today && logDate !== yesterday }}
+              onPress={() => setIsDatePickerOpen(true)}
+              style={[styles.chip, chipFill(logDate !== today && logDate !== yesterday, 'logDate')]}
+            >
+              <Text style={[styles.chipText, chipInk(logDate !== today && logDate !== yesterday)]}>Pick date</Text>
+            </PressableScale>
+          </View>
+          <View style={styles.dateInputLine}>
+            <TextInput
+              accessibilityHint={fieldErrors.logDate}
+              accessibilityLabel="Log Date"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onBlur={() => touchField('logDate')}
+              onChangeText={setLogDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={palette.placeholder}
+              style={[styles.input, styles.dateInput, { color: palette.foreground }]}
+              value={logDate}
+            />
+            <PressableScale
+              accessibilityLabel="Previous day"
+              accessibilityRole="button"
+              onPress={() => shiftDate(-1)}
+              style={styles.stepIconButton}
+            >
+              <Icon color={palette.foreground} name="chevron-left" size={18} />
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Next day"
+              accessibilityRole="button"
+              onPress={() => shiftDate(1)}
+              style={styles.stepIconButton}
+            >
+              <Icon color={palette.foreground} name="chevron-right" size={18} />
+            </PressableScale>
+          </View>
+        </>,
+        formattedDatePreview ? (
+          <Text style={[styles.rowLabelRight, { color: palette.muted }]}>{formattedDatePreview}</Text>
+        ) : null
+      )}
+
+      {/* Hours: a large numeral with steppers; the field stays editable. */}
+      <View
+        onLayout={measureField('hoursWorked')}
+        style={[styles.hoursBlock, { borderBottomColor: fieldErrors.hoursWorked ? palette.error : palette.hairline }]}
+      >
+        <View style={styles.hoursStepper}>
+          <PressableScale
+            accessibilityLabel="Subtract 0.5 hours"
+            accessibilityRole="button"
+            onPress={() => setHoursWorked(stepHours(hoursWorked, -HOURS_STEP))}
+            style={[styles.stepButton, { borderColor: palette.controlBorder }]}
+          >
+            <Text style={[styles.stepGlyph, { color: palette.foreground }]}>−</Text>
+          </PressableScale>
           <TextInput
-            accessibilityHint={fieldErrors.logDate}
-            accessibilityLabel="Log Date"
-            autoCapitalize="none"
-            autoCorrect={false}
-            onBlur={() => touchField('logDate')}
-            onChangeText={setLogDate}
-            placeholder="YYYY-MM-DD"
+            accessibilityHint={fieldErrors.hoursWorked}
+            accessibilityLabel="Hours Worked"
+            keyboardType="decimal-pad"
+            onBlur={() => touchField('hoursWorked')}
+            onChangeText={setHoursWorked}
+            placeholder="0"
             placeholderTextColor={palette.placeholder}
-            style={[
-              styles.input,
-              styles.dateInput,
-              {
-                backgroundColor: palette.card,
-                borderColor: fieldErrors.logDate ? palette.error : palette.border,
-                color: palette.foreground,
-              },
-            ]}
-            value={logDate}
+            style={[styles.hoursInput, { color: palette.foreground }]}
+            value={hoursWorked}
           />
           <PressableScale
-            accessibilityLabel="Open entry date picker"
+            accessibilityLabel="Add 0.5 hours"
             accessibilityRole="button"
-            onPress={() => setIsDatePickerOpen(true)}
-            style={[
-              styles.presetButton,
-              styles.stepButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
+            onPress={() => setHoursWorked(stepHours(hoursWorked, HOURS_STEP))}
+            style={[styles.stepButton, { borderColor: palette.controlBorder }]}
           >
-            <Icon color={palette.foreground} name="calendar" size={16} />
-          </PressableScale>
-          <PressableScale
-            accessibilityLabel="Previous day"
-            accessibilityRole="button"
-            onPress={() => shiftDate(-1)}
-            style={[
-              styles.presetButton,
-              styles.stepButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.presetText, { color: palette.foreground }]}>-1d</Text>
-          </PressableScale>
-          <PressableScale
-            accessibilityLabel="Next day"
-            accessibilityRole="button"
-            onPress={() => shiftDate(1)}
-            style={[
-              styles.presetButton,
-              styles.stepButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.presetText, { color: palette.foreground }]}>+1d</Text>
-          </PressableScale>
-          <PressableScale
-            accessibilityLabel="Set to today"
-            accessibilityRole="button"
-            accessibilityState={{ selected: logDate === today }}
-            onPress={() => setLogDate(today)}
-            style={[
-              styles.presetButton,
-              logDate === today
-                ? [
-                    styles.presetButtonActive,
-                    { backgroundColor: palette.primary, borderColor: palette.primary },
-                  ]
-                : { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-          >
-            <Text
-              style={[
-                styles.presetText,
-                logDate === today
-                  ? [styles.presetTextActive, { color: palette.onPrimary }]
-                  : { color: palette.foreground },
-              ]}
-            >
-              Today
-            </Text>
-          </PressableScale>
-          <PressableScale
-            accessibilityLabel="Set to yesterday"
-            accessibilityRole="button"
-            accessibilityState={{ selected: logDate === yesterday }}
-            onPress={() => setLogDate(yesterday)}
-            style={[
-              styles.presetButton,
-              logDate === yesterday
-                ? [
-                    styles.presetButtonActive,
-                    { backgroundColor: palette.primary, borderColor: palette.primary },
-                  ]
-                : { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-          >
-            <Text
-              style={[
-                styles.presetText,
-                logDate === yesterday
-                  ? [styles.presetTextActive, { color: palette.onPrimary }]
-                  : { color: palette.foreground },
-              ]}
-            >
-              Yesterday
-            </Text>
+            <Text style={[styles.stepGlyph, { color: palette.foreground }]}>+</Text>
           </PressableScale>
         </View>
-        {renderFieldError('logDate')}
-      </View>
-
-      {!legacy ? (
-        <View onLayout={measureField('entryType')} style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Type</Text>
-          <View style={styles.hourStepRow}>
-            {ENTRY_TYPES.map(type => (
-              <PressableScale key={type} accessibilityRole="button" accessibilityLabel={ENTRY_TYPE_LABELS[type]}
-                accessibilityState={{ selected: entryType === type }}
-                onPress={() => {
-                  setEntryType(type); setProjectId(''); setActivityTypeId(''); setActivityCode('');
-                  setTicketNumber(''); setCustomer(''); setActivityOther('');
-                  touchField('entryType', { entryType: type });
-                }}
-                style={[styles.chip, { backgroundColor: entryType === type ? palette.primary : palette.card, borderColor: borderFor('entryType') }]}>
-                <Text style={[styles.chipText, { color: entryType === type ? palette.onPrimary : palette.foreground }]}>{ENTRY_TYPE_LABELS[type]}</Text>
-              </PressableScale>
-            ))}
-          </View>
-          {renderFieldError('entryType')}
-        </View>
-      ) : null}
-
-      {/* Project Selection */}
-      {legacy || entryType === 'project' ? (
-      <View onLayout={measureField('projectId')} style={styles.fieldGroup}>
-        <View style={styles.fieldLabelRow}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Project</Text>
-          <Pressable
-            accessibilityLabel="Browse and search all projects"
-            accessibilityRole="button"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={() => setIsProjectPickerOpen(true)}
-          >
-            <Text style={[styles.browseLink, { color: palette.primary }]}>Search / All →</Text>
-          </Pressable>
-        </View>
-
-        {/* Main Selected Project Trigger Card */}
-        <PressableScale
-          accessibilityHint={fieldErrors.projectId}
-          accessibilityLabel={`Selected project: ${selectedProject?.name || 'None'}. Tap to search or change project`}
-          accessibilityRole="button"
-          onPress={() => setIsProjectPickerOpen(true)}
-          style={[
-            styles.pickerTriggerCard,
-            { backgroundColor: palette.card, borderColor: borderFor('projectId') },
-          ]}
-        >
-          <View style={styles.pickerTriggerLeft}>
-            <View style={[styles.pickerIconBadge, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={palette.primary} name="folder" size={18} />
-            </View>
-            <View style={styles.pickerTriggerInfo}>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.pickerTriggerName,
-                  { color: selectedProject ? palette.foreground : palette.placeholder },
-                ]}
-              >
-                {selectedProject?.name || 'Select a project...'}
-              </Text>
-              {selectedProject?.so_number ? (
-                <Text style={[styles.pickerTriggerSubtitle, { color: palette.muted }]}>
-                  SO: {selectedProject.so_number}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-          <View style={styles.pickerTriggerRight}>
-            <Text style={[styles.pickerActionLabel, { color: palette.primary }]}>Change ▾</Text>
-          </View>
-        </PressableScale>
-
-        {/* Quick Select Project Chips */}
-        {quickProjects.length > 0 ? (
-          <View style={styles.quickProjectsContainer}>
-            <Text style={[styles.quickLabel, { color: palette.muted }]}>Quick select:</Text>
-            <ChipRow>
-              {quickProjects.map((proj) => {
-                const active = proj.id === projectId;
-                return (
-                  <PressableScale
-                    key={proj.id}
-                    accessibilityLabel={`Quick select project ${proj.name}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    onPress={() => {
-                      setProjectId(proj.id);
-                      touchField('projectId', { projectId: proj.id });
-                    }}
-                    style={[
-                      styles.chip,
-                      active
-                        ? { backgroundColor: palette.primary, borderColor: palette.primary }
-                        : { backgroundColor: palette.card, borderColor: palette.border },
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.chipText,
-                        active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
-                      ]}
-                    >
-                      {proj.name}
-                    </Text>
-                  </PressableScale>
-                );
-              })}
-              <PressableScale
-                accessibilityLabel="Browse more projects"
-                accessibilityRole="button"
-                onPress={() => setIsProjectPickerOpen(true)}
-                style={[
-                  styles.chip,
-                  styles.moreChip,
-                  { backgroundColor: palette.badgeBg, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.chipText, styles.moreChipText, { color: palette.primary }]}>
-                  + Browse ({reference?.projects?.length ?? 0})
-                </Text>
-              </PressableScale>
-            </ChipRow>
-          </View>
-        ) : null}
-        {renderFieldError('projectId')}
-      </View>
-      ) : null}
-
-      {/* Historical activity reference remains editable, never reclassified. */}
-      {legacy ? (
-      <View onLayout={measureField('activityTypeId')} style={styles.fieldGroup}>
-        <View style={styles.fieldLabelRow}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity Type</Text>
-          {activityPickerItems.length > 4 ? (
-            <Pressable
-              accessibilityLabel="Browse all activity types"
-              accessibilityRole="button"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              onPress={() => setIsActivityPickerOpen(true)}
-            >
-              <Text style={[styles.browseLink, { color: palette.primary }]}>All →</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        <ChipRow>
-          {reference?.activityTypes?.filter((act) => !act.entry_type).map((act) => {
-            const active = act.id === activityTypeId;
-            return (
-              <PressableScale
-                key={act.id}
-                accessibilityLabel={act.name}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => setActivityTypeId(act.id)}
-                style={[
-                  styles.chip,
-                  active ? { backgroundColor: palette.primary, borderColor: palette.primary } : { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.chipText, active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground }]}>
-                  {act.name}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </ChipRow>
-        {renderFieldError('activityTypeId')}
-      </View>
-      ) : entryType ? (
-        <View onLayout={measureField('activityCode')} style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity</Text>
-          <View style={styles.hourStepRow}>
-            {activityOptions.map(({ code, label }) => (
-              <PressableScale key={code} accessibilityRole="button" accessibilityLabel={label}
-                accessibilityState={{ selected: activityCode === code }}
-                onPress={() => {
-                  setActivityCode(code); setTicketNumber(''); setCustomer(''); setActivityOther('');
-                  touchField('activityCode', { activityCode: code, ticketNumber: '', customer: '', activityOther: '' });
-                }}
-                style={[styles.chip, { backgroundColor: activityCode === code ? palette.primary : palette.card, borderColor: borderFor('activityCode') }]}>
-                <Text style={[styles.chipText, { color: activityCode === code ? palette.onPrimary : palette.foreground }]}>{label}</Text>
-              </PressableScale>
-            ))}
-          </View>
-          {renderFieldError('activityCode')}
-        </View>
-      ) : null}
-
-      {!legacy && entryType && activityCode && requiresTicketNumber(entryType, activityCode) ? (
-        <View onLayout={measureField('customer')} style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Customer</Text>
-          <TextInput accessibilityLabel="Customer" accessibilityHint={fieldErrors.customer}
-            placeholder="Customer name" placeholderTextColor={palette.placeholder}
-            value={customer} onChangeText={setCustomer} onBlur={() => touchField('customer')}
-            style={[styles.input, { backgroundColor: palette.card, color: palette.foreground, borderColor: borderFor('customer') }]} />
-          {renderFieldError('customer')}
-        </View>
-      ) : null}
-
-      {!legacy && entryType && activityCode ? (
-        requiresTicketNumber(entryType, activityCode) || requiresActivityOther(entryType, activityCode) ? (
-          <View onLayout={measureField(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')} style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>{requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}</Text>
-            <TextInput accessibilityLabel={requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}
-              accessibilityHint={fieldErrors.ticketNumber || fieldErrors.activityOther}
-              autoCapitalize="none" autoCorrect={false}
-              placeholder={requiresTicketNumber(entryType, activityCode) ? 'INC 00012345 or SVR 00012345' : 'Describe the activity'}
-              placeholderTextColor={palette.placeholder}
-              value={requiresTicketNumber(entryType, activityCode) ? ticketNumber : activityOther}
-              onChangeText={requiresTicketNumber(entryType, activityCode) ? setTicketNumber : setActivityOther}
-              onBlur={() => touchField(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')}
-              style={[styles.input, { backgroundColor: palette.card, color: palette.foreground, borderColor: borderFor(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther') }]} />
-            {renderFieldError(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')}
-          </View>
-        ) : null
-      ) : null}
-
-      {/* Hours Worked */}
-      <View onLayout={measureField('hoursWorked')} style={styles.fieldGroup}>
-        <View style={styles.fieldLabelRow}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
-          {smartHours !== null ? (
-            <Text style={[styles.smartHoursBadge, { color: palette.primary }]}>
-              Suggested: {smartHours}h
-            </Text>
-          ) : null}
-        </View>
-        <TextInput
-          accessibilityHint={fieldErrors.hoursWorked}
-          accessibilityLabel="Hours Worked"
-          keyboardType="decimal-pad"
-          onBlur={() => touchField('hoursWorked')}
-          onChangeText={setHoursWorked}
-          placeholder="e.g. 7.5"
-          placeholderTextColor={palette.placeholder}
-          style={[
-            styles.input,
-            {
-              backgroundColor: palette.card,
-              borderColor: borderFor('hoursWorked'),
-              color: palette.foreground,
-            },
-          ]}
-          value={hoursWorked}
-        />
+        <Text style={[styles.hoursCaption, { color: palette.muted }]}>hours worked</Text>
         {renderFieldError('hoursWorked')}
-        {/* Quick hour step chips */}
-        <View style={styles.hourStepRow}>
+        <View style={[styles.chipLine, styles.chipLineCentered]}>
           {smartHours !== null ? (
             <PressableScale
               accessibilityLabel={`Set smart hours to ${smartHours}`}
               accessibilityRole="button"
               onPress={() => setDirectHours(smartHours)}
-              style={[
-                styles.hourStepChip,
-                styles.smartHourChip,
-                { borderColor: palette.primary, backgroundColor: palette.badgeBg },
-              ]}
+              style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
             >
-              <Text style={[styles.hourStepText, { color: palette.primary }]}>★ {smartHours}h</Text>
+              <Text style={[styles.chipText, { color: palette.foreground }]}>{`Suggested ${smartHours} h`}</Text>
             </PressableScale>
           ) : null}
-          <PressableScale
-            accessibilityLabel="Add 0.5 hours"
-            accessibilityRole="button"
-            onPress={() => addHours(0.5)}
-            style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
-          >
-            <Text style={[styles.hourStepText, { color: palette.primary }]}>+0.5h</Text>
-          </PressableScale>
-          <PressableScale
-            accessibilityLabel="Add 1.0 hour"
-            accessibilityRole="button"
-            onPress={() => addHours(1.0)}
-            style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
-          >
-            <Text style={[styles.hourStepText, { color: palette.primary }]}>+1.0h</Text>
-          </PressableScale>
           <PressableScale
             accessibilityLabel="Set to 4.0 hours (half day)"
             accessibilityRole="button"
             onPress={() => setDirectHours(4.0)}
-            style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
           >
-            <Text style={[styles.hourStepText, { color: palette.primary }]}>4.0h</Text>
+            <Text style={[styles.chipText, { color: palette.foreground }]}>4 h</Text>
           </PressableScale>
           <PressableScale
             accessibilityLabel="Set to 8.0 hours (full day)"
             accessibilityRole="button"
             onPress={() => setDirectHours(8.0)}
-            style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
           >
-            <Text style={[styles.hourStepText, { color: palette.primary }]}>8.0h</Text>
+            <Text style={[styles.chipText, { color: palette.foreground }]}>8 h</Text>
           </PressableScale>
           {hoursWorked ? (
             <PressableScale
               accessibilityLabel="Clear hours"
               accessibilityRole="button"
               onPress={() => setHoursWorked('')}
-              style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+              style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
             >
-              <Text style={[styles.hourStepText, { color: colors.error }]}>Clear</Text>
+              <Text style={[styles.chipText, { color: palette.muted }]}>Clear</Text>
             </PressableScale>
           ) : null}
         </View>
       </View>
 
-      {/* Work Description */}
-      <View onLayout={measureField('workDone')} style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Done / Description</Text>
-        <TextInput
-          accessibilityHint={fieldErrors.workDone}
-          accessibilityLabel="Work Done"
-          autoCapitalize="sentences"
-          autoCorrect={true}
-          multiline
-          numberOfLines={4}
-          onBlur={() => touchField('workDone')}
-          onChangeText={setWorkDone}
-          placeholder="Describe what you worked on..."
-          placeholderTextColor={palette.placeholder}
-          returnKeyType="done"
-          style={[
-            styles.input,
-            styles.textArea,
-            {
-              backgroundColor: palette.card,
-              borderColor: borderFor('workDone'),
-              color: palette.foreground,
-            },
-          ]}
-          textAlignVertical="top"
-          value={workDone}
-        />
-        {renderFieldError('workDone')}
-
-        {/* Recent Work Suggestions */}
-        {recentSuggestions.length > 0 ? (
-          <View style={styles.recentSuggestionsContainer}>
-            <Text style={[styles.quickLabel, { color: palette.muted }]}>Recent work snippets:</Text>
-            <ChipRow>
-              {recentSuggestions.map((text, idx) => (
-                <PressableScale
-                  key={idx}
-                  accessibilityLabel={`Use recent snippet: ${text}`}
-                  accessibilityRole="button"
-                  onPress={() => setWorkDone(text)}
-                  style={[styles.chip, { backgroundColor: palette.card, borderColor: palette.border }]}
-                >
-                  <Text numberOfLines={1} style={[styles.chipText, { color: palette.foreground }]}>
-                    {text}
-                  </Text>
+      {!legacy
+        ? renderRow(
+            'entryType',
+            'Type',
+            <View style={styles.chipLine}>
+              {ENTRY_TYPES.map(type => (
+                <PressableScale key={type} accessibilityRole="button" accessibilityLabel={ENTRY_TYPE_LABELS[type]}
+                  accessibilityState={{ selected: entryType === type }}
+                  onPress={() => {
+                    setEntryType(type); setProjectId(''); setActivityTypeId(''); setActivityCode('');
+                    setTicketNumber(''); setCustomer(''); setActivityOther('');
+                    touchField('entryType', { entryType: type });
+                  }}
+                  style={[styles.chip, chipFill(entryType === type, 'entryType')]}>
+                  <Text style={[styles.chipText, chipInk(entryType === type)]}>{ENTRY_TYPE_LABELS[type]}</Text>
                 </PressableScale>
               ))}
-            </ChipRow>
-          </View>
-        ) : null}
-      </View>
+            </View>
+          )
+        : null}
+
+      {/* Project: the row opens the searchable picker; recent projects are one tap. */}
+      {legacy || entryType === 'project'
+        ? renderRow(
+            'projectId',
+            'Project',
+            <>
+              <PressableScale
+                accessibilityHint={fieldErrors.projectId}
+                accessibilityLabel={`Selected project: ${selectedProject?.name || 'None'}. Tap to search or change project`}
+                accessibilityRole="button"
+                onPress={() => setIsProjectPickerOpen(true)}
+                scaleTo={1}
+                style={styles.pickerValue}
+              >
+                <View style={styles.pickerValueText}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.pickerName, { color: selectedProject ? palette.foreground : palette.placeholder }]}
+                  >
+                    {selectedProject?.name || 'Select a project'}
+                  </Text>
+                  {selectedProject?.so_number ? (
+                    <Text style={[styles.pickerSubtitle, { color: palette.muted }]}>
+                      SO: {selectedProject.so_number}
+                    </Text>
+                  ) : null}
+                </View>
+                <Icon color={palette.muted} name="chevron-right" size={16} />
+              </PressableScale>
+              {quickProjects.length > 0 ? (
+                <ChipRow>
+                  {quickProjects.map((proj) => {
+                    const active = proj.id === projectId;
+                    return (
+                      <PressableScale
+                        key={proj.id}
+                        accessibilityLabel={`Quick select project ${proj.name}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        onPress={() => {
+                          setProjectId(proj.id);
+                          touchField('projectId', { projectId: proj.id });
+                        }}
+                        style={[styles.chip, chipFill(active)]}
+                      >
+                        <Text numberOfLines={1} style={[styles.chipText, chipInk(active)]}>
+                          {proj.name}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                  <PressableScale
+                    accessibilityLabel="Browse more projects"
+                    accessibilityRole="button"
+                    onPress={() => setIsProjectPickerOpen(true)}
+                    style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
+                  >
+                    <Text style={[styles.chipText, { color: palette.primary }]}>
+                      {`Browse all (${reference?.projects?.length ?? 0})`}
+                    </Text>
+                  </PressableScale>
+                </ChipRow>
+              ) : null}
+            </>
+          )
+        : null}
+
+      {/* Historical activity reference remains editable, never reclassified. */}
+      {legacy
+        ? renderRow(
+            'activityTypeId',
+            'Activity type',
+            <ChipRow>
+              {reference?.activityTypes?.filter((act) => !act.entry_type).map((act) => {
+                const active = act.id === activityTypeId;
+                return (
+                  <PressableScale
+                    key={act.id}
+                    accessibilityLabel={act.name}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setActivityTypeId(act.id)}
+                    style={[styles.chip, chipFill(active)]}
+                  >
+                    <Text style={[styles.chipText, chipInk(active)]}>{act.name}</Text>
+                  </PressableScale>
+                );
+              })}
+            </ChipRow>,
+            activityPickerItems.length > 4 ? (
+              <Pressable
+                accessibilityLabel="Browse all activity types"
+                accessibilityRole="button"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => setIsActivityPickerOpen(true)}
+              >
+                <Text style={[styles.rowLabelRight, { color: palette.primary }]}>Browse all</Text>
+              </Pressable>
+            ) : null
+          )
+        : entryType
+        ? renderRow(
+            'activityCode',
+            'Activity',
+            <View style={styles.chipLine}>
+              {activityOptions.map(({ code, label }) => (
+                <PressableScale key={code} accessibilityRole="button" accessibilityLabel={label}
+                  accessibilityState={{ selected: activityCode === code }}
+                  onPress={() => {
+                    setActivityCode(code); setTicketNumber(''); setCustomer(''); setActivityOther('');
+                    touchField('activityCode', { activityCode: code, ticketNumber: '', customer: '', activityOther: '' });
+                  }}
+                  style={[styles.chip, chipFill(activityCode === code, 'activityCode')]}>
+                  <Text style={[styles.chipText, chipInk(activityCode === code)]}>{label}</Text>
+                </PressableScale>
+              ))}
+            </View>
+          )
+        : null}
+
+      {ticketRequired
+        ? renderRow(
+            'customer',
+            'Customer',
+            <TextInput accessibilityLabel="Customer" accessibilityHint={fieldErrors.customer}
+              placeholder="Customer name" placeholderTextColor={palette.placeholder}
+              value={customer} onChangeText={setCustomer} onBlur={() => touchField('customer')}
+              style={[styles.input, { color: palette.foreground }]} />
+          )
+        : null}
+
+      {ticketRequired || otherRequired
+        ? renderRow(
+            detailKey,
+            ticketRequired ? 'Ticket number' : 'Other activity',
+            <TextInput accessibilityLabel={ticketRequired ? 'Ticket Number' : 'Other Activity'}
+              accessibilityHint={fieldErrors.ticketNumber || fieldErrors.activityOther}
+              autoCapitalize="none" autoCorrect={false}
+              placeholder={ticketRequired ? 'INC 00012345 or SVR 00012345' : 'Describe the activity'}
+              placeholderTextColor={palette.placeholder}
+              value={ticketRequired ? ticketNumber : activityOther}
+              onChangeText={ticketRequired ? setTicketNumber : setActivityOther}
+              onBlur={() => touchField(detailKey)}
+              style={[styles.input, { color: palette.foreground }]} />
+          )
+        : null}
+
+      {/* Work done */}
+      {renderRow(
+        'workDone',
+        'Work done',
+        <>
+          <TextInput
+            accessibilityHint={fieldErrors.workDone}
+            accessibilityLabel="Work Done"
+            autoCapitalize="sentences"
+            autoCorrect={true}
+            multiline
+            numberOfLines={4}
+            onBlur={() => touchField('workDone')}
+            onChangeText={setWorkDone}
+            placeholder="Describe what you worked on"
+            placeholderTextColor={palette.placeholder}
+            returnKeyType="done"
+            style={[styles.input, styles.textArea, { color: palette.foreground }]}
+            textAlignVertical="top"
+            value={workDone}
+          />
+          {recentSuggestions.length > 0 ? (
+            <View style={styles.recentSuggestionsContainer}>
+              <Text style={[styles.quickLabel, { color: palette.muted }]}>Recent work</Text>
+              <ChipRow>
+                {recentSuggestions.map((text, idx) => (
+                  <PressableScale
+                    key={idx}
+                    accessibilityLabel={`Use recent snippet: ${text}`}
+                    accessibilityRole="button"
+                    onPress={() => setWorkDone(text)}
+                    style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
+                  >
+                    <Text numberOfLines={1} style={[styles.chipText, { color: palette.foreground }]}>
+                      {text}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ChipRow>
+            </View>
+          ) : null}
+        </>
+      )}
 
       {/* Submit Button */}
       <PressableScale
@@ -958,7 +870,7 @@ export function TimeEntryForm({
           <ActivityIndicator color={palette.onPrimary} />
         ) : (
           <Text style={[styles.buttonText, { color: palette.onPrimary }]}>
-            {submitLabel || (mode === 'create' ? 'Save Timesheet' : 'Update Timesheet')}
+            {submitLabel || (mode === 'create' ? 'Save entry' : 'Save changes')}
           </Text>
         )}
       </PressableScale>
@@ -994,6 +906,7 @@ export function TimeEntryForm({
         confirmLabel="Use This Date"
         dateInputLabel="Entry date"
         initialDate={logDate}
+        minDate={minLogDate}
         onCancel={() => setIsDatePickerOpen(false)}
         onConfirm={(date) => {
           setLogDate(date);
@@ -1023,28 +936,30 @@ function ChipRow({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  // The sheet: white, rounded at the top, filling the rest of the screen.
   formContainer: {
     width: '100%',
+    flexGrow: 1,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
   },
-  copyLastCard: {
+  copyLast: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
     gap: spacing.sm,
     minHeight: 44,
-    ...shadows.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   copyLastText: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
     flex: 1,
   },
   errorBox: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
@@ -1054,107 +969,50 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
   },
-  fieldGroup: { marginBottom: spacing.md },
-  fieldLabelRow: {
+  row: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowLabelLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.xs,
   },
-  fieldLabel: { fontSize: typography.caption, fontWeight: '700' },
-  smartHoursBadge: {
-    fontSize: typography.badge,
-    fontWeight: '700',
-  },
-  browseLink: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  pickerTriggerCard: {
+  rowLabel: { fontSize: typography.caption, fontWeight: '600' },
+  rowLabelRight: { fontSize: typography.caption, fontWeight: '600' },
+  pickerValue: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 52,
-    ...shadows.sm,
+    minHeight: 44,
+    width: '100%',
   },
-  pickerTriggerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  pickerIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  pickerTriggerInfo: {
-    flex: 1,
-  },
-  pickerTriggerName: {
-    fontSize: typography.body,
-    fontWeight: '700',
-  },
-  pickerTriggerSubtitle: {
-    fontSize: typography.badge,
-    marginTop: 1,
-  },
-  pickerTriggerRight: {
-    alignItems: 'flex-end',
-  },
-  pickerActionLabel: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  quickProjectsContainer: {
-    marginTop: spacing.xs,
-  },
-  recentSuggestionsContainer: {
-    marginTop: spacing.xs,
-  },
-  quickLabel: {
-    fontSize: typography.badge,
-    fontWeight: '600',
-    marginTop: spacing.xs,
-    marginBottom: 2,
-  },
+  pickerValueText: { flex: 1, marginRight: spacing.sm },
+  pickerName: { fontSize: typography.body, fontWeight: '600' },
+  pickerSubtitle: { fontSize: typography.badge, marginTop: 1 },
+  recentSuggestionsContainer: { marginTop: spacing.sm },
+  quickLabel: { fontSize: typography.badge, fontWeight: '600', marginBottom: 2 },
   input: {
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     fontSize: typography.body,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
+    minHeight: 44,
+    paddingHorizontal: 0,
   },
-  dateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
-  dateInput: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
-  datePreviewText: { fontSize: typography.badge, fontWeight: '700' },
-  stepButton: { minWidth: 44, paddingHorizontal: spacing.sm },
-  presetButton: {
-    borderWidth: 1,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-    justifyContent: 'center',
+  dateInputLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  dateInput: { flex: 1 },
+  stepIconButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
-    ...shadows.sm,
+    justifyContent: 'center',
   },
-  // The selected colors come from the runtime palette at the call site; this
-  // carries the elevation that lifts the active chip off its siblings.
-  presetButtonActive: { ...shadows.md },
-  presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: { fontWeight: '800' },
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.sm, marginVertical: spacing.xs },
+  chipLine: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chipLineCentered: { justifyContent: 'center', marginTop: spacing.md },
   chip: {
     borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     marginRight: spacing.sm,
@@ -1162,48 +1020,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     maxWidth: 260,
-    ...shadows.sm,
-  },
-  moreChip: {
-    borderStyle: 'dashed',
-  },
-  moreChipText: {
-    fontWeight: '700',
   },
   chipText: { fontSize: typography.caption, fontWeight: '600' },
-  chipTextActive: { fontWeight: '700' },
-  hourStepRow: {
+  hoursBlock: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  hoursStepper: {
     flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-    flexWrap: 'wrap',
-  },
-  hourStepChip: {
-    borderWidth: 1,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    minHeight: 44,
-    justifyContent: 'center',
     alignItems: 'center',
-    ...shadows.sm,
+    justifyContent: 'center',
+    gap: spacing.md,
   },
-  smartHourChip: {
-    borderWidth: 1.5,
+  stepButton: {
+    width: 52,
+    height: 52,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  hourStepText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
+  stepGlyph: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.md,
+    fontWeight: '600',
   },
-  textArea: { minHeight: 96, paddingTop: spacing.sm, marginTop: spacing.xs },
+  hoursInput: {
+    minWidth: 120,
+    textAlign: 'center',
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.lg,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    paddingVertical: spacing.xs,
+  },
+  hoursCaption: { textAlign: 'center', fontSize: typography.caption },
+  textArea: { minHeight: 96, textAlignVertical: 'top' },
   button: {
     alignItems: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
-    marginTop: spacing.md,
-    minHeight: 48,
+    marginTop: spacing.lg,
+    minHeight: 52,
     paddingHorizontal: spacing.lg,
-    ...shadows.sm,
   },
-  buttonText: { fontSize: typography.body, fontWeight: '700' },
+  buttonText: { fontSize: typography.body, fontWeight: '600' },
 });

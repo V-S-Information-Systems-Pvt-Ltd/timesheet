@@ -9,6 +9,12 @@ import { ApiClient } from '../src/api/client';
 jest.mock('../src/api/client');
 
 describe('ReportsScreen', () => {
+  // Unmount so the list's VirtualizedList timers cannot log after the tests end.
+  const mounted: ReactTestRenderer.ReactTestRenderer[] = [];
+  afterEach(async () => {
+    await ReactTestRenderer.act(async () => { mounted.splice(0).forEach(r => r.unmount()); });
+  });
+
   it('renders report metrics and grouped breakdown', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
@@ -34,6 +40,7 @@ describe('ReportsScreen', () => {
         </ScreenTheme>
       );
     });
+    mounted.push(renderer!);
 
     const backBtn = renderer!.root.findByProps({ accessibilityLabel: 'Back to dashboard' });
     expect(backBtn).toBeDefined();
@@ -68,6 +75,7 @@ describe('ReportsScreen', () => {
         </ScreenTheme>
       );
     });
+    mounted.push(renderer!);
 
     expect(renderer!.root).toBeDefined();
   });
@@ -119,6 +127,7 @@ describe('ReportsScreen', () => {
         </ScreenTheme>
       );
     });
+    mounted.push(renderer!);
 
     // Verify clear button exists
     const clearBtn = renderer!.root.findByProps({ accessibilityLabel: 'Clear member filter' });

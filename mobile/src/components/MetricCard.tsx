@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { fonts, spacing, typography, numeralSizes, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 
 interface MetricCardProps {
@@ -14,6 +14,10 @@ interface MetricCardProps {
   palette: Palette;
 }
 
+/**
+ * A large Barlow numeral with a small label. Plain text on the surface; only a
+ * pressable metric gets a (subtle) pressed background.
+ */
 export const MetricCard = React.memo(function MetricCardComponent({
   label,
   value,
@@ -25,28 +29,10 @@ export const MetricCard = React.memo(function MetricCardComponent({
   palette,
 }: MetricCardProps) {
   const content = (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: palette.card,
-          borderColor: isPrimary ? palette.primary : palette.border,
-        },
-      ]}
-    >
-      <View style={styles.headerRow}>
-        <Text style={[styles.label, { color: palette.muted }]}>{label}</Text>
-        {onPress ? (
-          <Text style={[styles.chevron, { color: isPrimary ? palette.primary : palette.muted }]}>›</Text>
-        ) : null}
-      </View>
-      <Text
-        style={[
-          styles.value,
-          { color: isPrimary ? palette.primary : palette.foreground },
-        ]}
-      >
-        {value} <Text style={styles.unit}>{unit}</Text>
+    <View style={styles.content}>
+      <Text style={[styles.label, { color: palette.muted }]}>{label}</Text>
+      <Text style={[styles.value, { color: isPrimary ? palette.primary : palette.foreground }]}>
+        {value} <Text style={[styles.unit, { color: palette.muted }]}>{unit}</Text>
       </Text>
       {dateLabel ? (
         <Text style={[styles.date, { color: palette.muted }]}>{dateLabel}</Text>
@@ -61,6 +47,9 @@ export const MetricCard = React.memo(function MetricCardComponent({
           accessibilityLabel={accessibilityLabel || `${label}: ${value} ${unit}`}
           accessibilityRole="button"
           onPress={onPress}
+          rippleColor={palette.progressTrack}
+          scaleTo={1}
+          style={styles.pressable}
         >
           {content}
         </PressableScale>
@@ -75,31 +64,24 @@ const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
   },
-  card: {
+  pressable: {
     width: '100%',
-    padding: spacing.md,
     borderRadius: borderRadius.md,
-    borderWidth: 1,
-    ...shadows.sm,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
+  content: {
+    width: '100%',
+    paddingVertical: spacing.xs,
   },
   label: {
     fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  chevron: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
+    marginBottom: spacing.xs,
   },
   value: {
-    fontSize: typography.title,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.md,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   unit: {
     fontSize: typography.caption,

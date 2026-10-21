@@ -9,9 +9,23 @@ import {
   backfillMinDate,
   firstOfMonthISO,
   sanitizeWorkDone,
+  isValidEmail,
   MAX_WORK_DONE_LENGTH,
   type BackfillSettings,
 } from '../lib/validation'
+
+describe('isValidEmail', () => {
+  it('accepts an address with a local part and a domain', () => {
+    expect(isValidEmail(' person@example.com ')).toBe(true)
+  })
+
+  it('rejects non-strings, missing @ and empty domains', () => {
+    expect(isValidEmail(42)).toBe(false)
+    expect(isValidEmail(null)).toBe(false)
+    expect(isValidEmail('person.example.com')).toBe(false)
+    expect(isValidEmail('person@ ')).toBe(false)
+  })
+})
 
 describe('isValidISODate', () => {
   it('accepts real dates', () => {

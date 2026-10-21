@@ -24,6 +24,8 @@ export type {
   BatchDeleteTimesheetsResponse,
   BatchDuplicateItem,
   BatchDuplicateResultItem,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
   BatchDuplicateTimesheetsResponse,
 } from '@vsis/contracts';
 

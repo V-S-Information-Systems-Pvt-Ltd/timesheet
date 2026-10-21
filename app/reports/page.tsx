@@ -7,7 +7,6 @@ import dynamic from 'next/dynamic'
 import { dailyHours } from '@/app/components/chart-data'
 import { reportUserId } from './view'
 import { REPORT_TABS, reportNavKey } from '@/lib/navigation'
-import { afterOfficeHours, expectedHours, leaveHours, workingDays } from '@/lib/work-calendar'
 
 const HolidayCalendar = dynamic(() => import('./holiday-calendar'), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
 const MissingDaysCalendar = dynamic(() => import('./holiday-calendar').then(mod => mod.MissingDaysCalendar), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
@@ -20,7 +19,7 @@ import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, Page
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
-import { monthEndOffset, monthStartOffset, presetRange, toISODate, todayISO, type Preset } from '@vsis/core'
+import { afterOfficeHours, expectedHours, leaveHours, monthEndOffset, monthStartOffset, presetRange, toISODate, todayISO, workingDays, type Preset } from '@vsis/core'
 import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
 import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'

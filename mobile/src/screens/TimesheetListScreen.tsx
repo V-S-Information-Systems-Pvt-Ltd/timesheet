@@ -11,10 +11,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
-import type { TimesheetEntry } from '../api/contracts';
+import { useSessionActor, useSessionActions, useSessionSync } from '../auth/SessionProvider';
+import type { BatchUpdateTimesheetItem, PersonProfile, TimesheetEntry } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 
 import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
@@ -24,6 +24,8 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { DateChooserModal } from '../components/DateChooserModal';
+import { BulkEditModal } from '../components/BulkEditModal';
+import { SearchablePickerModal } from '../components/SearchablePickerModal';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
 import { entryWord, formatEntryCount } from '../utils/plural';
 import { isNetworkFailure } from '../auth/domains/types';
@@ -37,6 +39,8 @@ interface TimesheetListScreenProps {
   onDuplicateDraft?: (entry: TimesheetEntry, targetDate: string) => void;
   filterUser?: FilterUserParam | null;
   onClearFilterUser?: () => void;
+  /** Picks the member to filter by (same params as Team -> member); null clears it. */
+  onSelectFilterUser?: (user: FilterUserParam | null) => void;
 }
 
 type FilterRange = 'all' | '7days' | '30days' | 'custom';
@@ -60,10 +64,9 @@ interface BatchReport {
 
 const BATCH_ERRORS_SHOWN = 2;
 
-/** Rounds away float noise (7.5 + 0.1 + 0.2) before it reaches a label. */
+/** Rounds away float noise (7.5 + 0.1 + 0.2) before it reaches the screen. */
 function formatDayTotal(hours: number): string {
-  const rounded = Math.round(hours * 100) / 100;
-  return `${rounded} ${rounded === 1 ? 'hr' : 'hrs'}`;
+  return String(Math.round(hours * 100) / 100);
 }
 
 const PAGE_SIZE = 25;
@@ -76,11 +79,48 @@ export function TimesheetListScreen({
   onDuplicateDraft,
   filterUser,
   onClearFilterUser,
+  onSelectFilterUser,
 }: TimesheetListScreenProps) {
   const palette = useTheme().palette;
   const { actor, effectiveActor } = useSessionActor();
-  const { listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSessionActions();
+  const { listPeople, listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets, batchUpdateTimesheets } = useSessionActions();
+  const { isOffline } = useSessionSync();
   const currentActor = effectiveActor || actor;
+  // Same rule as HomeScreen: the server capability, with a role fallback.
+  const canViewTeam = Boolean(
+    currentActor?.capabilities?.canViewTeam ?? (
+      currentActor?.hierarchyRole === 'manager' ||
+      currentActor?.hierarchyRole === 'team_lead' ||
+      currentActor?.permissionRole === 'admin' ||
+      currentActor?.permissionRole === 'co'
+    )
+  );
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [people, setPeople] = useState<PersonProfile[] | null>(null);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState<string | null>(null);
+
+  const openMemberPicker = useCallback(async () => {
+    setMemberPickerOpen(true);
+    if (people || peopleLoading) return;
+    setPeopleLoading(true);
+    setPeopleError(null);
+    try {
+      setPeople((await listPeople()) ?? []);
+    } catch (err) {
+      setPeopleError(err instanceof Error ? err.message : 'Could not load team members.');
+    } finally {
+      setPeopleLoading(false);
+    }
+  }, [listPeople, people, peopleLoading]);
+
+  const memberItems = useMemo(
+    () => [
+      { id: 'all', name: 'All / Me' },
+      ...(people ?? []).map((p) => ({ id: p.id, name: p.name || p.email, subtitle: p.email })),
+    ],
+    [people]
+  );
 
   const [filter, setFilter] = useState<FilterRange>('all');
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
@@ -122,6 +162,8 @@ export function TimesheetListScreen({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+  // Snapshot of the rows being edited; null when the bulk edit modal is closed.
+  const [bulkEditEntries, setBulkEditEntries] = useState<TimesheetEntry[] | null>(null);
 
   /**
    * The range the current filter resolves to. Kept as primitives so the fetch
@@ -273,7 +315,7 @@ export function TimesheetListScreen({
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {
       Alert.alert(
-        'Delete Entry',
+        'Delete entry',
         `Are you sure you want to delete the ${entry.hours_worked}h entry on ${formatDatePreview(entry.log_date)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -346,7 +388,7 @@ export function TimesheetListScreen({
     if (selectedIds.size === 0) return;
     const count = selectedIds.size;
     Alert.alert(
-      'Bulk Delete',
+      'Delete selected entries',
       `Are you sure you want to delete ${count} selected ${entryWord(count)}?`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -392,6 +434,60 @@ export function TimesheetListScreen({
       ]
     );
   }, [selectedIds, deleteTimesheets, handleExitSelection]);
+
+  const handleBulkEdit = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    // Bulk edit is a direct write; it is never queued for later.
+    if (isOffline) {
+      Alert.alert('You are offline', 'Bulk edit needs a connection and is not saved for later. Try again when you are back online.');
+      return;
+    }
+    const picked = entries.filter((e) => selectedIds.has(e.id));
+    if (picked.length > 500) {
+      Alert.alert('Too many entries', 'Bulk edit supports up to 500 entries. Select fewer entries.');
+      return;
+    }
+    if (!picked.every(canManageEntry)) {
+      Alert.alert('Not allowed', 'You can only edit your own entries.');
+      return;
+    }
+    setBulkEditEntries(picked);
+  }, [selectedIds, entries, isOffline, canManageEntry]);
+
+  const handleConfirmBulkEdit = useCallback(
+    async (payload: BatchUpdateTimesheetItem[]) => {
+      if (isOffline) {
+        Alert.alert('You are offline', 'Bulk edit needs a connection and is not saved for later.');
+        return;
+      }
+      setIsBulkOperating(true);
+      let updated = 0;
+      let errors: string[] = [];
+      try {
+        const res = await batchUpdateTimesheets(payload);
+        updated = res.updated ?? 0;
+        errors = res.errors ?? [];
+      } catch (err) {
+        errors = [err instanceof Error ? err.message : 'Failed to edit entries'];
+      }
+      setIsBulkOperating(false);
+      setBulkEditEntries(null);
+      handleExitSelection();
+      if (updated > 0) await handleRefresh();
+      if (errors.length > 0 || updated !== payload.length) {
+        setShowAllBatchErrors(false);
+        setBatchReport({
+          title: updated === 0 ? 'All edits failed.' : 'Bulk edit finished with errors',
+          succeeded: updated,
+          failed: payload.length - updated,
+          total: payload.length,
+          verb: 'edited',
+          errors: errors.length > 0 ? errors : ['The server did not update every entry.'],
+        });
+      }
+    },
+    [isOffline, batchUpdateTimesheets, handleExitSelection, handleRefresh]
+  );
 
   const handleBulkDuplicate = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -564,17 +660,24 @@ export function TimesheetListScreen({
       if (item.kind === 'day') {
         return (
           <View
+            accessibilityLabel={`${formatDatePreview(item.date)}, ${formatDayTotal(item.totalHours)} hours`}
             accessibilityRole="header"
-            style={[styles.dayHeader, { borderBottomColor: palette.border }]}
+            style={[styles.dayHeader, { borderBottomColor: palette.hairline }]}
           >
-            <Text style={[styles.dayHeaderDate, { color: palette.foreground }]}>
-              {formatDatePreview(item.date)}
+            <View style={styles.dayHeaderDate}>
+              <Text style={[styles.dayHeaderDateText, { color: palette.foreground }]}>
+                {formatDatePreview(item.date)}
+              </Text>
+              {item.count > 1 ? (
+                <Text style={[styles.dayHeaderCount, { color: palette.muted }]}>
+                  {formatEntryCount(item.count)}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={[styles.dayHeaderTotal, { color: palette.foreground }]}>
+              {formatDayTotal(item.totalHours)}
             </Text>
-            <Text style={[styles.dayHeaderTotal, { color: palette.muted }]}>
-              {`${formatDayTotal(item.totalHours)}${
-                item.count > 1 ? ` • ${formatEntryCount(item.count)}` : ''
-              }`}
-            </Text>
+            <Text style={[styles.dayHeaderUnit, { color: palette.muted }]}>h</Text>
           </View>
         );
       }
@@ -654,7 +757,7 @@ export function TimesheetListScreen({
           onPress={onLogTime}
           style={[styles.logButton, { backgroundColor: palette.primary }]}
         >
-          <Text style={[styles.logButtonText, { color: palette.onPrimary }]}>+ Log</Text>
+          <Text style={[styles.logButtonText, { color: palette.onPrimary }]}>Log time</Text>
         </PressableScale>
       </View>
     );
@@ -671,7 +774,7 @@ export function TimesheetListScreen({
   }, [isLoadingMore, palette.muted, palette.primary]);
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       {/* Header */}
       <ScreenHeader
         backLabel="‹ Dashboard"
@@ -708,6 +811,20 @@ export function TimesheetListScreen({
         </View>
       ) : null}
 
+      {canViewTeam && onSelectFilterUser ? (
+        <PressableScale
+          accessibilityLabel="Filter by member"
+          accessibilityRole="button"
+          onPress={openMemberPicker}
+          style={[styles.memberBtn, { borderColor: palette.controlBorder }]}
+        >
+          <Icon name="team" size={16} color={palette.primary} />
+          <Text style={[styles.memberBtnText, { color: palette.foreground }]}>
+            Member: {filterUser ? filterUser.name || filterUser.email : 'All / Me'}
+          </Text>
+        </PressableScale>
+      ) : null}
+
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
         <FilterTab
@@ -718,13 +835,13 @@ export function TimesheetListScreen({
         />
         <FilterTab
           active={filter === '7days'}
-          label="Past 7 Days"
+          label="Past 7 days"
           onPress={() => setFilter('7days')}
           palette={palette}
         />
         <FilterTab
           active={filter === '30days'}
-          label="Past 30 Days"
+          label="Past 30 days"
           onPress={() => setFilter('30days')}
           palette={palette}
         />
@@ -757,7 +874,7 @@ export function TimesheetListScreen({
 
       {/* Selection Action Toolbar */}
       {isSelectionMode ? (
-        <View style={[styles.selectionToolbar, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <View style={[styles.selectionToolbar, { borderColor: palette.hairline }]}>
           <Pressable
             accessibilityLabel={selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
             accessibilityRole="button"
@@ -765,7 +882,7 @@ export function TimesheetListScreen({
             style={styles.toolbarSelectAll}
           >
             <Text style={[styles.toolbarSelectAllText, { color: palette.primary }]}>
-              {selectedIds.size === entries.length ? 'Deselect All' : 'Select All'}
+              {selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
             </Text>
           </Pressable>
 
@@ -778,6 +895,24 @@ export function TimesheetListScreen({
               <ActivityIndicator color={palette.primary} size="small" />
             ) : (
               <>
+                <Pressable
+                  accessibilityLabel={`Edit ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={handleBulkEdit}
+                  style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
+                >
+                  <Icon color={selectedIds.size > 0 ? palette.primary : palette.muted} name="edit" size={14} />
+                  <Text
+                    style={[
+                      styles.toolbarBtnText,
+                      { color: selectedIds.size > 0 ? palette.primary : palette.muted },
+                    ]}
+                  >
+                    Edit ({selectedIds.size})
+                  </Text>
+                </Pressable>
+
                 <Pressable
                   accessibilityLabel={`Duplicate ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
                   accessibilityRole="button"
@@ -803,11 +938,11 @@ export function TimesheetListScreen({
                   onPress={handleBulkDelete}
                   style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
                 >
-                  <Icon color={selectedIds.size > 0 ? colors.error : palette.muted} name="trash" size={14} />
+                  <Icon color={selectedIds.size > 0 ? palette.error : palette.muted} name="trash" size={14} />
                   <Text
                     style={[
                       styles.toolbarBtnText,
-                      { color: selectedIds.size > 0 ? colors.error : palette.muted },
+                      { color: selectedIds.size > 0 ? palette.error : palette.muted },
                     ]}
                   >
                     Delete ({selectedIds.size})
@@ -821,7 +956,7 @@ export function TimesheetListScreen({
 
       {error && entries.length > 0 ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
         </View>
       ) : null}
 
@@ -890,6 +1025,7 @@ export function TimesheetListScreen({
       {isLoading ? (
         <LoadingState message="Loading entries..." palette={palette} />
       ) : (
+        <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
         <FlatList
           contentContainerStyle={styles.listContent}
           data={listRows}
@@ -911,12 +1047,12 @@ export function TimesheetListScreen({
                   onPress={handleRetry}
                   style={[styles.retryButton, { backgroundColor: palette.primary }]}
                 >
-                  <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try Again</Text>
+                  <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try again</Text>
                 </PressableScale>
               </View>
             ) : (
               <EmptyState
-                actionLabel="+ Log Time"
+                actionLabel="Log time"
                 icon="clock"
                 message="No timesheet entries found."
                 onAction={onLogTime}
@@ -941,7 +1077,38 @@ export function TimesheetListScreen({
           renderItem={renderRow}
           windowSize={5}
         />
+        </View>
       )}
+
+      <BulkEditModal
+        entries={bulkEditEntries ?? []}
+        isLoading={isBulkOperating}
+        onCancel={() => setBulkEditEntries(null)}
+        onSubmit={handleConfirmBulkEdit}
+        palette={palette}
+        visible={bulkEditEntries !== null}
+      />
+
+      <SearchablePickerModal
+        error={peopleError}
+        isLoading={peopleLoading}
+        items={memberItems}
+        onClose={() => setMemberPickerOpen(false)}
+        onSelect={(item) => {
+          setMemberPickerOpen(false);
+          if (item.id === 'all') {
+            onSelectFilterUser?.(null);
+            return;
+          }
+          const p = people?.find((x) => x.id === item.id);
+          onSelectFilterUser?.({ id: item.id, name: p?.name, email: p?.email });
+        }}
+        palette={palette}
+        searchPlaceholder="Search members..."
+        selectedId={filterUser?.id ?? 'all'}
+        title="Filter by member"
+        visible={memberPickerOpen}
+      />
 
       <DateChooserModal
         initialDate={
@@ -1027,20 +1194,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   logButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     minHeight: 36,
     justifyContent: 'center',
-    ...shadows.sm,
   },
-  logButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  logButtonText: { fontSize: typography.caption, fontWeight: '600' },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
+  memberBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  memberBtnText: { flex: 1, fontSize: typography.caption, fontWeight: '600' },
   selectionToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1049,9 +1227,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    ...shadows.sm,
+    borderBottomWidth: 1,
   },
   toolbarSelectAll: {
     paddingVertical: spacing.xs,
@@ -1091,22 +1267,36 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  // Day subtotal: date on the left, the day's hours as a numeral on the right.
   dayHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.xs,
+    alignItems: 'baseline',
+    gap: spacing.xs,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dayHeaderDate: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+  },
+  dayHeaderDateText: {
+    fontSize: typography.body,
+    fontWeight: '600',
+  },
+  dayHeaderCount: {
     fontSize: typography.caption,
-    fontWeight: '700',
   },
   dayHeaderTotal: {
-    fontSize: typography.badge,
-    fontWeight: '700',
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.sm,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  dayHeaderUnit: {
+    fontSize: typography.caption,
   },
   rangeSummary: {
     flexDirection: 'row',
@@ -1116,7 +1306,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
   },
   rangeSummaryText: {
@@ -1175,13 +1365,20 @@ const styles = StyleSheet.create({
   loadErrorTitle: { fontSize: typography.body, fontWeight: '700' },
   loadErrorText: { fontSize: typography.caption, textAlign: 'center' },
   retryButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    ...shadows.sm,
   },
-  retryButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  retryButtonText: { fontSize: typography.caption, fontWeight: '600' },
+  // The list sits on a white sheet under the paper header area.
+  sheet: {
+    flex: 1,
+    marginTop: spacing.sm,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
+  },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   footerLoader: {
     paddingVertical: spacing.lg,
