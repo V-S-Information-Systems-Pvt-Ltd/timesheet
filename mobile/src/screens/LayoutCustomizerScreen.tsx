@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { spacing, typography, borderRadius, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -241,211 +241,177 @@ export function LayoutCustomizerScreen({
     onGoBack();
   }, [isDirty, onGoBack, onDirtyChange]);
 
+  const scopeButton = (
+    mode: 'personal' | 'default',
+    label: string,
+    a11y: string,
+    onPress: () => void,
+    loading = false
+  ) => {
+    const active = targetMode === mode;
+    return (
+      <PressableScale
+        accessibilityLabel={a11y}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        onPress={onPress}
+        style={[
+          styles.scopeButton,
+          active
+            ? { backgroundColor: palette.foreground, borderColor: palette.foreground }
+            : { borderColor: palette.controlBorder },
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={active ? palette.paper : palette.primary} size="small" />
+        ) : (
+          <Text style={[styles.scopeButtonText, { color: active ? palette.paper : palette.foreground }]}>{label}</Text>
+        )}
+      </PressableScale>
+    );
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         backAccessibilityLabel="Back to more"
         backLabel="‹ More"
         onBack={handleBackRequest}
         palette={palette}
         subtitle="Customize Home and More screen modules"
-        title="Customize Layout"
+        title="Customize layout"
       />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {canManageWorkspace && (
-          <View style={[styles.modeSelectorContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modeSelectorLabel, { color: palette.foreground }]}>
-              Customization Scope
-            </Text>
-            <View style={styles.modeButtonsRow}>
-              <PressableScale
-                accessibilityLabel="My Layout Override"
-                accessibilityRole="button"
-                onPress={handleSwitchToPersonal}
-                style={[
-                  styles.modeButton,
-                  {
-                    backgroundColor: targetMode === 'personal' ? palette.primary : palette.badgeBg,
-                    borderColor: targetMode === 'personal' ? palette.primary : palette.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.modeButtonText,
-                    { color: targetMode === 'personal' ? palette.onPrimary : palette.foreground },
-                  ]}
-                >
-                  My Layout
-                </Text>
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel="Workspace Default Layout"
-                accessibilityRole="button"
-                onPress={handleSwitchToWorkspace}
-                style={[
-                  styles.modeButton,
-                  {
-                    backgroundColor: targetMode === 'default' ? palette.primary : palette.badgeBg,
-                    borderColor: targetMode === 'default' ? palette.primary : palette.border,
-                  },
-                ]}
-              >
-                {isLoadingWorkspace ? (
-                  <ActivityIndicator color={targetMode === 'default' ? palette.onPrimary : palette.primary} size="small" />
-                ) : (
-                  <Text
-                    style={[
-                      styles.modeButtonText,
-                      { color: targetMode === 'default' ? palette.onPrimary : palette.foreground },
-                    ]}
-                  >
-                    Workspace Default
-                  </Text>
-                )}
-              </PressableScale>
+      <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {canManageWorkspace && (
+            <View style={styles.scopeSection}>
+              <Text style={[styles.scopeLabel, { color: palette.muted }]}>Customization scope</Text>
+              <View style={styles.scopeRow}>
+                {scopeButton('personal', 'My layout', 'My Layout Override', handleSwitchToPersonal)}
+                {scopeButton('default', 'Workspace default', 'Workspace Default Layout', handleSwitchToWorkspace, isLoadingWorkspace)}
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
-          {targetMode === 'default' ? 'Default Workspace Modules' : 'Active Modules'}
-        </Text>
-        <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>
-          {targetMode === 'default'
-            ? 'Configure the global default module order and placements for users without custom overrides.'
-            : 'Reorder modules or change placement between Home and More tabs. Essential time & profile modules cannot be disabled.'}
-        </Text>
+          <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
+            {targetMode === 'default' ? 'Default workspace modules' : 'Active modules'}
+          </Text>
+          <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>
+            {targetMode === 'default'
+              ? 'Configure the global default module order and placements for users without custom overrides.'
+              : 'Reorder modules or change placement between Home and More tabs. Essential time and profile modules cannot be disabled.'}
+          </Text>
 
-        <View style={styles.moduleList}>
-          {activeModules.map((m, index) => {
-            const meta = MODULE_REGISTRY[m.id];
-            if (!meta) return null;
-            const isEssential = ESSENTIAL_MODULE_IDS.includes(m.id);
+          <View>
+            {activeModules.map((m, index) => {
+              const meta = MODULE_REGISTRY[m.id];
+              if (!meta) return null;
+              const isEssential = ESSENTIAL_MODULE_IDS.includes(m.id);
 
-            return (
-              <View
-                key={m.id}
-                style={[
-                  styles.card,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
-                  <Icon color={palette.primary} name={meta.icon} size={20} />
-                </View>
-
-                <View style={styles.textContainer}>
-                  <View style={styles.titleRow}>
-                    <Text style={[styles.itemTitle, { color: palette.foreground }]}>
-                      {meta.title}
-                    </Text>
-                    {isEssential && (
-                      <View style={[styles.essentialBadge, { backgroundColor: palette.badgeBg }]}>
-                        <Text style={[styles.essentialText, { color: palette.primary }]}>
-                          Essential
-                        </Text>
-                      </View>
-                    )}
+              return (
+                <View key={m.id} style={[styles.row, { borderBottomColor: palette.hairline }]}>
+                  <View style={[styles.iconWrapper, { backgroundColor: palette.primaryLight }]}>
+                    <Icon color={palette.primary} name={meta.icon} size={20} />
                   </View>
-                  <Text style={[styles.itemDescription, { color: palette.muted }]}>
-                    {meta.description}
-                  </Text>
-                  <View style={styles.controlsRow}>
-                    <PressableScale
-                      accessibilityHint={`Switches placement to ${m.placement === 'home' ? 'More' : 'Home'}`}
-                      accessibilityLabel={`Placement: ${m.placement === 'home' ? 'Home Tab' : 'More Tab'}`}
-                      accessibilityRole="button"
-                      onPress={() => handleTogglePlacement(m.id)}
-                      style={[
-                        styles.placementButton,
-                        { borderColor: palette.border, backgroundColor: palette.badgeBg },
-                      ]}
-                    >
-                      <Text style={[styles.placementText, { color: palette.foreground }]}>
-                        Placement: {m.placement === 'home' ? 'Home' : 'More'}
-                      </Text>
-                    </PressableScale>
 
-                    <View style={styles.orderButtons}>
+                  <View style={styles.textContainer}>
+                    <View style={styles.titleRow}>
+                      <Text style={[styles.itemTitle, { color: palette.foreground }]}>{meta.title}</Text>
+                      {isEssential && (
+                        <View style={[styles.essentialBadge, { backgroundColor: palette.primaryLight }]}>
+                          <Text style={[styles.essentialText, { color: palette.primary }]}>Essential</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.itemDescription, { color: palette.muted }]}>{meta.description}</Text>
+                    <View style={styles.controlsRow}>
                       <PressableScale
-                        accessibilityLabel={`Move ${meta.title} up`}
+                        accessibilityHint={`Switches placement to ${m.placement === 'home' ? 'More' : 'Home'}`}
+                        accessibilityLabel={`Placement: ${m.placement === 'home' ? 'Home Tab' : 'More Tab'}`}
                         accessibilityRole="button"
-                        disabled={index === 0}
-                        onPress={() => handleMove(index, 'up')}
-                        style={[styles.arrowButton, index === 0 && styles.disabledOpacity]}
+                        onPress={() => handleTogglePlacement(m.id)}
+                        style={[styles.placementButton, { borderColor: palette.controlBorder }]}
                       >
-                        <Icon color={palette.foreground} name="chevron-left" size={16} />
+                        <Text style={[styles.placementText, { color: palette.foreground }]}>
+                          Placement: {m.placement === 'home' ? 'Home' : 'More'}
+                        </Text>
                       </PressableScale>
-                      <PressableScale
-                        accessibilityLabel={`Move ${meta.title} down`}
-                        accessibilityRole="button"
-                        disabled={index === activeModules.length - 1}
-                        onPress={() => handleMove(index, 'down')}
-                        style={[
-                          styles.arrowButton,
-                          index === activeModules.length - 1 && styles.disabledOpacity,
-                        ]}
-                      >
-                        <Icon color={palette.foreground} name="chevron-right" size={16} />
-                      </PressableScale>
+
+                      <View style={styles.orderButtons}>
+                        <PressableScale
+                          accessibilityLabel={`Move ${meta.title} up`}
+                          accessibilityRole="button"
+                          disabled={index === 0}
+                          onPress={() => handleMove(index, 'up')}
+                          style={[styles.arrowButton, index === 0 && styles.disabledOpacity]}
+                        >
+                          <Icon color={palette.foreground} name="chevron-left" size={16} />
+                        </PressableScale>
+                        <PressableScale
+                          accessibilityLabel={`Move ${meta.title} down`}
+                          accessibilityRole="button"
+                          disabled={index === activeModules.length - 1}
+                          onPress={() => handleMove(index, 'down')}
+                          style={[
+                            styles.arrowButton,
+                            index === activeModules.length - 1 && styles.disabledOpacity,
+                          ]}
+                        >
+                          <Icon color={palette.foreground} name="chevron-right" size={16} />
+                        </PressableScale>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                <View style={styles.switchContainer}>
                   <Switch
                     accessibilityLabel={`Toggle ${meta.title}`}
                     disabled={isEssential}
                     onValueChange={(val) => handleToggleEnabled(m.id, val)}
-                    trackColor={{ false: palette.border, true: palette.primary }}
+                    trackColor={{ false: palette.controlBorder, true: palette.primary }}
                     value={m.enabled}
                   />
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
 
-        <View style={styles.actionButtonsContainer}>
-          <PressableScale
-            accessibilityHint="Saves customized mobile layout"
-            accessibilityLabel="Save Layout"
-            accessibilityRole="button"
-            disabled={isSaving || isOffline}
-            onPress={handleSave}
-            style={[
-              styles.saveButton,
-              { backgroundColor: palette.primary },
-              (isSaving || isOffline) && styles.disabledButtonOpacity,
-            ]}
-          >
-            <Text style={[styles.saveButtonText, { color: palette.onPrimary }]}>
-              {isSaving ? 'Saving...' : 'Save Layout'}
-            </Text>
-          </PressableScale>
+          <View style={styles.actionButtonsContainer}>
+            <PressableScale
+              accessibilityHint="Saves customized mobile layout"
+              accessibilityLabel="Save Layout"
+              accessibilityRole="button"
+              disabled={isSaving || isOffline}
+              onPress={handleSave}
+              style={[
+                styles.saveButton,
+                { backgroundColor: palette.primary },
+                (isSaving || isOffline) && styles.disabledButtonOpacity,
+              ]}
+            >
+              <Text style={[styles.saveButtonText, { color: palette.onPrimary }]}>
+                {isSaving ? 'Saving…' : 'Save layout'}
+              </Text>
+            </PressableScale>
 
-          <PressableScale
-            accessibilityHint="Restores original default mobile layout"
-            accessibilityLabel="Reset to Default"
-            accessibilityRole="button"
-            disabled={isResetting || isOffline}
-            onPress={handleReset}
-            style={[
-              styles.resetButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.resetButtonText, { color: palette.foreground }]}>
-              {isResetting ? 'Resetting...' : 'Reset to Default'}
-            </Text>
-          </PressableScale>
-        </View>
-      </ScrollView>
+            <PressableScale
+              accessibilityHint="Restores original default mobile layout"
+              accessibilityLabel="Reset to Default"
+              accessibilityRole="button"
+              disabled={isResetting || isOffline}
+              onPress={handleReset}
+              style={[styles.resetButton, { borderColor: palette.controlBorder }]}
+            >
+              <Text style={[styles.resetButtonText, { color: palette.foreground }]}>
+                {isResetting ? 'Resetting…' : 'Reset to default'}
+              </Text>
+            </PressableScale>
+          </View>
+        </ScrollView>
+      </View>
 
       <ConfirmDialog
         visible={showDiscardDialog}
@@ -465,69 +431,62 @@ export function LayoutCustomizerScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  sheet: {
     flex: 1,
+    marginTop: spacing.sm,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
   },
-  sectionTitle: {
-    fontSize: typography.heading,
-    fontWeight: '700',
-    marginTop: spacing.md,
+  scopeSection: { marginBottom: spacing.md },
+  scopeLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
+  scopeRow: { flexDirection: 'row', gap: spacing.sm },
+  scopeButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  scopeButtonText: { fontSize: typography.caption, fontWeight: '600' },
+  sectionTitle: { fontSize: typography.heading, fontWeight: '600', marginTop: spacing.sm },
   sectionSubtitle: {
     fontSize: typography.caption,
     lineHeight: 18,
     marginTop: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
-  moduleList: {
-    gap: spacing.sm,
-  },
-  card: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: spacing.md,
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...shadows.sm,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   iconWrapper: {
     width: 40,
     height: 40,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
   },
-  textContainer: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  itemTitle: {
-    fontSize: typography.body,
-    fontWeight: '700',
-  },
+  textContainer: { flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  itemTitle: { fontSize: typography.body, fontWeight: '600' },
   essentialBadge: {
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
   },
-  essentialText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  itemDescription: {
-    fontSize: typography.caption,
-    marginTop: 2,
-  },
+  essentialText: { fontSize: typography.badge, fontWeight: '600' },
+  itemDescription: { fontSize: typography.caption, marginTop: 2 },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -535,83 +494,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   placementButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
   },
-  placementText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  orderButtons: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  arrowButton: {
-    padding: 6,
-  },
-  switchContainer: {
-    marginLeft: spacing.xs,
-  },
-  actionButtonsContainer: {
-    marginTop: spacing.xl,
-    gap: spacing.md,
-  },
+  placementText: { fontSize: typography.caption, fontWeight: '600' },
+  orderButtons: { flexDirection: 'row' },
+  arrowButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  actionButtonsContainer: { marginTop: spacing.xl, gap: spacing.md },
   saveButton: {
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
+    minHeight: 52,
+    borderRadius: borderRadius.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: typography.body,
-  },
+  saveButtonText: { fontWeight: '600', fontSize: typography.body },
   resetButton: {
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
+    minHeight: 52,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  resetButtonText: {
-    fontWeight: '600',
-    fontSize: typography.body,
-  },
-  disabledOpacity: {
-    opacity: 0.3,
-  },
-  disabledButtonOpacity: {
-    opacity: 0.6,
-  },
-  modeSelectorContainer: {
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  modeSelectorLabel: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
-  modeButtonsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeButtonText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
+  resetButtonText: { fontWeight: '600', fontSize: typography.body },
+  disabledOpacity: { opacity: 0.3 },
+  disabledButtonOpacity: { opacity: 0.6 },
 });

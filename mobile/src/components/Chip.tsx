@@ -9,6 +9,7 @@ interface ChipProps {
   onPress: () => void;
   accessibilityLabel?: string;
   accessibilityRole?: 'button' | 'tab';
+  disabled?: boolean;
   palette: Palette;
 }
 
@@ -19,16 +20,19 @@ export function Chip({
   onPress,
   accessibilityLabel,
   accessibilityRole = 'button',
+  disabled = false,
   palette,
 }: ChipProps) {
   return (
     <PressableScale
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole={accessibilityRole}
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: active, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={[
         styles.chip,
+        disabled && styles.disabled,
         active
           ? { backgroundColor: palette.foreground, borderColor: palette.foreground }
           : { borderColor: palette.controlBorder },
@@ -53,4 +57,5 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
   text: { fontSize: typography.caption, fontWeight: '600' },
+  disabled: { opacity: 0.5 },
 });
