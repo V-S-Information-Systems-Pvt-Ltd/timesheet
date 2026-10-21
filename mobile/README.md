@@ -78,4 +78,4 @@ of the repository's Gradle properties.
 - Bearer sign-in remains disabled until the Android Keystore, iOS Keychain, and
   Windows PasswordVault adapters have installed-build evidence. Enable the
   server-side `MOBILE_BEARER_AUTH_ENABLED=true` flag only after that gate.
-- Barlow Semi Condensed (Medium, SemiBold) numerals ship as `assets/fonts/*.ttf` (copied into each platform project) under the SIL OFL; see `assets/fonts/OFL.txt`.
+- Barlow Semi Condensed (Medium, SemiBold) numerals ship as `assets/fonts/*.ttf` (copied into the Android and iOS projects) under the SIL OFL; see `assets/fonts/OFL.txt`. Windows uses the system font: RNW Fabric text reads only the system font collection, and the Microsoft Store rejects the `windows.sharedFonts` extension that would register Barlow there.

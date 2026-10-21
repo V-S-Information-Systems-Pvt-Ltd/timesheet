@@ -111,9 +111,9 @@ export function resolveFonts(os: string): FontFamilies {
     case 'ios':
       // File basename (Android assets/fonts) == PostScript name (iOS UIAppFonts).
       return { numeral: 'BarlowSemiCondensed-SemiBold', numeralMedium: 'BarlowSemiCondensed-Medium' };
-    case 'windows':
-      // DirectWrite family names; resolves only if the font is installed on the machine.
-      return { numeral: 'Barlow Semi Condensed SemiBold', numeralMedium: 'Barlow Semi Condensed Medium' };
+    // Windows: RNW Fabric text reads only the system font collection, and the
+    // Store rejects the windows.sharedFonts extension that would register Barlow
+    // there, so numerals use the system font.
     default:
       return { numeral: undefined, numeralMedium: undefined };
   }
