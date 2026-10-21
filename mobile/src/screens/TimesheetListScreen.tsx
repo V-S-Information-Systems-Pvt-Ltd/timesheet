@@ -315,7 +315,7 @@ export function TimesheetListScreen({
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {
       Alert.alert(
-        'Delete Entry',
+        'Delete entry',
         `Are you sure you want to delete the ${entry.hours_worked}h entry on ${formatDatePreview(entry.log_date)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -388,7 +388,7 @@ export function TimesheetListScreen({
     if (selectedIds.size === 0) return;
     const count = selectedIds.size;
     Alert.alert(
-      'Bulk Delete',
+      'Delete selected entries',
       `Are you sure you want to delete ${count} selected ${entryWord(count)}?`,
       [
         { text: 'Cancel', style: 'cancel' },

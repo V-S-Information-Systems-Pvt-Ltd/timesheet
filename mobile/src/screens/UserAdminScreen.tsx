@@ -305,12 +305,12 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
   const handleToggleActive = useCallback(
     (user: PersonProfile) => {
       if (user.id === effectiveActor?.id && user.isActive) {
-        Alert.alert('Action Blocked', 'You cannot deactivate your own account.');
+        Alert.alert('Action blocked', 'You cannot deactivate your own account.');
         return;
       }
       const newStatus = !user.isActive;
       Alert.alert(
-        newStatus ? 'Activate Account' : 'Deactivate Account',
+        newStatus ? 'Activate account' : 'Deactivate account',
         `Are you sure you want to ${newStatus ? 'activate' : 'deactivate'} ${user.name || user.email}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -381,7 +381,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
 
   const handleDeleteTitle = (title: TitleAdminItem) => {
     Alert.alert(
-      'Delete Title',
+      'Delete title',
       `Are you sure you want to delete the title "${title.name}"?`,
       [
         { text: 'Cancel', style: 'cancel' },

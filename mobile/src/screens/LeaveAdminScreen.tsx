@@ -151,7 +151,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
     const user = usersById.get(leave.user_id);
     const name = user ? user.name || user.email : 'user';
     Alert.alert(
-      'Remove Leave Marker',
+      'Remove leave marker',
       `Are you sure you want to remove the leave marker on ${formatDatePreview(
         leave.leave_date
       )} for ${name}?`,

@@ -168,7 +168,7 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
         return;
       }
       Alert.alert(
-        'Delete Project',
+        'Delete project',
         `Are you sure you want to delete "${project.name}"? This action cannot be undone.`,
         [
           { text: 'Cancel', style: 'cancel' },

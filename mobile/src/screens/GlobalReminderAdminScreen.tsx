@@ -142,7 +142,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
       return;
     }
     Alert.alert(
-      'Delete Global Reminder',
+      'Delete global reminder',
       `Are you sure you want to delete this company-wide reminder?\n\n"${reminder.message}"`,
       [
         { text: 'Cancel', style: 'cancel' },

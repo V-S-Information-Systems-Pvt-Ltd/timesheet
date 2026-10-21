@@ -199,7 +199,7 @@ export function LayoutCustomizerScreen({
     }
     const isDefault = targetMode === 'default';
     Alert.alert(
-      isDefault ? 'Reset Workspace Default' : 'Reset Personal Layout',
+      isDefault ? 'Reset workspace default' : 'Reset personal layout',
       isDefault
         ? 'Are you sure you want to restore the factory default layout for all users?'
         : 'Are you sure you want to remove your layout override and inherit the workspace default?',

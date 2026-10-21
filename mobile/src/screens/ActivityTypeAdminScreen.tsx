@@ -186,7 +186,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
         return;
       }
       Alert.alert(
-        'Delete Activity Type',
+        'Delete activity type',
         `Are you sure you want to delete "${activity.name}"? Existing entries will have their activity set to unclassified.`,
         [
           { text: 'Cancel', style: 'cancel' },
