@@ -104,8 +104,8 @@ android {
         applicationId "com.vsis.timesheet"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 25
-        versionName "1.4.1"
+        versionCode 26
+        versionName "1.4.2"
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {
