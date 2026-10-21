@@ -13,13 +13,14 @@ import {
 } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import type { PersonProfile } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { spacing, typography, borderRadius, useTheme } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
 import { buildHierarchyTree, type HierarchyTreeNode } from '@vsis/core';
 import { useModalBounds } from '../utils/modal-layout';
 
@@ -121,42 +122,18 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
     return flattened;
   }, [treeResult.roots, expandedIds]);
 
-  const renderRoleBadge = useCallback(
-    (item: PersonProfile) => {
-      const role = item.hierarchyRole;
-      let label = 'USER';
-      let isLeader = false;
-
-      if (role === 'manager') {
-        label = 'MANAGER';
-        isLeader = true;
-      } else if (role === 'team_lead') {
-        label = 'LEAD';
-        isLeader = true;
-      } else if (role === 'engineer') {
-        label = 'ENGINEER';
-      }
-
-      return (
-        <View
-          style={[
-            styles.roleBadge,
-            { backgroundColor: isLeader ? palette.badgeBg : palette.card, borderColor: palette.border },
-          ]}
-        >
-          <Text
-            style={[
-              styles.roleBadgeText,
-              { color: isLeader ? palette.primary : palette.muted },
-            ]}
-          >
-            {label}
-          </Text>
-        </View>
-      );
-    },
-    [palette]
-  );
+  const roleLabel = useCallback((item: PersonProfile) => {
+    switch (item.hierarchyRole) {
+      case 'manager':
+        return 'Manager';
+      case 'team_lead':
+        return 'Team lead';
+      case 'engineer':
+        return 'Engineer';
+      default:
+        return '';
+    }
+  }, []);
 
   const handleMemberPress = useCallback(
     (item: PersonProfile) => {
@@ -169,8 +146,8 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
 
   const renderDirectoryItem = useCallback(
     ({ item }: { item: PersonProfile }) => {
-      const initial = item.name ? item.name[0].toUpperCase() : 'U';
       const isActionable = Boolean(onSelectMember);
+      const subtitle = item.title || roleLabel(item);
 
       return (
         <PressableScale
@@ -178,165 +155,122 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
           accessibilityRole={isActionable ? 'button' : 'none'}
           disabled={!isActionable}
           onPress={() => handleMemberPress(item)}
-          style={[
-            styles.personCard,
-            { backgroundColor: palette.card, borderColor: palette.border },
-          ]}
+          scaleTo={1}
+          style={[styles.personRow, { borderBottomColor: palette.hairline }]}
         >
-          <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
-            <Text style={[styles.avatarText, { color: palette.onPrimary }]}>{initial}</Text>
-          </View>
           <View style={styles.personInfo}>
-            <View style={styles.personHeader}>
-              <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
-              {renderRoleBadge(item)}
-            </View>
-            <Text style={[styles.personEmail, { color: palette.muted }]}>{item.email}</Text>
-            {item.title ? (
-              <Text style={[styles.personTitle, { color: palette.muted }]}>{item.title}</Text>
-            ) : null}
+            <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
+            {subtitle ? <Text style={[styles.personMeta, { color: palette.muted }]}>{subtitle}</Text> : null}
+            <Text style={[styles.personMeta, { color: palette.muted }]}>{item.email}</Text>
             {item.department ? (
-              <Text style={[styles.personDept, { color: palette.placeholder }]}>{item.department}</Text>
+              <Text style={[styles.personMeta, { color: palette.muted }]}>{item.department}</Text>
             ) : null}
           </View>
         </PressableScale>
       );
     },
-    [handleMemberPress, onSelectMember, palette, renderRoleBadge]
+    [handleMemberPress, onSelectMember, palette, roleLabel]
   );
 
   const renderTreeItem = useCallback(
     ({ item: node }: { item: HierarchyTreeNode<PersonProfile> }) => {
       const item = node.item;
-      const initial = item.name ? item.name[0].toUpperCase() : 'U';
       const hasChildren = node.children.length > 0;
       const isExpanded = expandedIds.has(item.id);
       const indent = node.depth * 20;
       const isActionable = Boolean(onSelectMember);
+      const subtitle = item.title || roleLabel(item);
 
       return (
-        <View style={[styles.treeRowContainer, { paddingLeft: indent }]}>
-          <PressableScale
-            accessibilityLabel={`Team member: ${item.name}, ${item.title || item.hierarchyRole || 'User'}`}
-            accessibilityRole={isActionable ? 'button' : 'none'}
-            disabled={!isActionable}
-            onPress={() => handleMemberPress(item)}
-            style={[
-              styles.treeCard,
-              { backgroundColor: palette.card, borderColor: palette.border },
-            ]}
-          >
-            {hasChildren ? (
-              <Pressable
-                accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} reports for ${item.name}`}
-                accessibilityRole="button"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => toggleExpand(item.id)}
-                style={styles.expandToggle}
-              >
-                <Icon
-                  color={palette.primary}
-                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                  size={16}
-                />
-              </Pressable>
-            ) : (
-              <View style={styles.expandPlaceholder} />
-            )}
+        <PressableScale
+          accessibilityLabel={`Team member: ${item.name}, ${item.title || item.hierarchyRole || 'User'}`}
+          accessibilityRole={isActionable ? 'button' : 'none'}
+          disabled={!isActionable}
+          onPress={() => handleMemberPress(item)}
+          scaleTo={1}
+          style={[styles.personRow, { borderBottomColor: palette.hairline, paddingLeft: indent }]}
+        >
+          {hasChildren ? (
+            <Pressable
+              accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} reports for ${item.name}`}
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => toggleExpand(item.id)}
+              style={styles.expandToggle}
+            >
+              <Icon
+                color={palette.muted}
+                name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                size={16}
+              />
+            </Pressable>
+          ) : (
+            <View style={styles.expandToggle} />
+          )}
 
-            <View style={[styles.treeAvatar, { backgroundColor: palette.primary }]}>
-              <Text style={[styles.treeAvatarText, { color: palette.onPrimary }]}>{initial}</Text>
-            </View>
-
-            <View style={styles.personInfo}>
-              <View style={styles.personHeader}>
-                <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
-                {renderRoleBadge(item)}
-              </View>
-              <Text style={[styles.personEmail, { color: palette.muted }]}>{item.email}</Text>
-              {item.title ? (
-                <Text style={[styles.personTitle, { color: palette.muted }]}>{item.title}</Text>
-              ) : null}
-              {hasChildren ? (
-                <Text style={[styles.directReportsCount, { color: palette.primary }]}>
-                  {node.children.length} direct {node.children.length === 1 ? 'report' : 'reports'}
-                </Text>
-              ) : null}
-            </View>
-          </PressableScale>
-        </View>
+          <View style={styles.personInfo}>
+            <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
+            {subtitle ? <Text style={[styles.personMeta, { color: palette.muted }]}>{subtitle}</Text> : null}
+          </View>
+          {hasChildren ? (
+            <Text style={[styles.directReportsCount, { color: palette.muted }]}>
+              {node.children.length} {node.children.length === 1 ? 'report' : 'reports'}
+            </Text>
+          ) : null}
+        </PressableScale>
       );
     },
-    [expandedIds, handleMemberPress, onSelectMember, palette, renderRoleBadge, toggleExpand]
+    [expandedIds, handleMemberPress, onSelectMember, palette, roleLabel, toggleExpand]
   );
 
+  const refreshControl =
+    Platform.OS !== 'windows' ? (
+      <RefreshControl
+        onRefresh={handleRefresh}
+        refreshing={isRefreshing}
+        tintColor={palette.primary}
+      />
+    ) : undefined;
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
-      {/* Header */}
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         backLabel="‹ Dashboard"
         onBack={onBack}
         palette={palette}
-        title="Team & Org Tree"
+        title="Team"
       />
 
-      {/* View Mode Segmented Controls */}
       <View style={styles.toolbarRow}>
-        <View style={[styles.segmentedContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Pressable
-            accessibilityLabel="Switch to Org Tree View"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: viewMode === 'tree' }}
-            onPress={() => setViewMode('tree')}
-            style={[
-              styles.segmentBtn,
-              viewMode === 'tree' && { backgroundColor: palette.primary },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                viewMode === 'tree' ? [styles.segmentTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
-              ]}
-            >
-              Org Tree
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityLabel="Switch to Directory View"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: viewMode === 'directory' }}
-            onPress={() => setViewMode('directory')}
-            style={[
-              styles.segmentBtn,
-              viewMode === 'directory' && { backgroundColor: palette.primary },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                viewMode === 'directory' ? [styles.segmentTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
-              ]}
-            >
-              Directory ({people.length})
-            </Text>
-          </Pressable>
-        </View>
+        <Chip
+          accessibilityLabel="Switch to Org Tree View"
+          accessibilityRole="tab"
+          active={viewMode === 'tree'}
+          label="Org tree"
+          onPress={() => setViewMode('tree')}
+          palette={palette}
+        />
+        <Chip
+          accessibilityLabel="Switch to Directory View"
+          accessibilityRole="tab"
+          active={viewMode === 'directory'}
+          label={`Directory (${people.length})`}
+          onPress={() => setViewMode('directory')}
+          palette={palette}
+        />
       </View>
 
-      {/* Search Input */}
       <View style={styles.searchContainer}>
         <TextInput
           accessibilityLabel="Search team members"
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={setSearch}
-          placeholder="Search by name, email, department or title..."
+          placeholder="Search by name, email, department or title"
           placeholderTextColor={palette.placeholder}
           style={[
             styles.searchInput,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+            { borderColor: palette.controlBorder, color: palette.foreground },
           ]}
           value={search}
         />
@@ -344,69 +278,55 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
 
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
         </View>
       ) : null}
 
-      {isLoading ? (
-        <LoadingState message="Loading organizational hierarchy..." palette={palette} />
-      ) : viewMode === 'tree' ? (
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={flattenedTreeNodes}
-          initialNumToRender={15}
-          keyExtractor={(node) => node.item.id}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <EmptyState
-              icon="team"
-              message="No team members match your filter."
-              palette={palette}
-            />
-          }
-          maxToRenderPerBatch={15}
-          refreshControl={
-            Platform.OS !== 'windows' ? (
-              <RefreshControl
-                onRefresh={handleRefresh}
-                refreshing={isRefreshing}
-                tintColor={palette.primary}
+      <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
+        {isLoading ? (
+          <LoadingState message="Loading your team..." palette={palette} />
+        ) : viewMode === 'tree' ? (
+          <FlatList
+            contentContainerStyle={styles.listContent}
+            data={flattenedTreeNodes}
+            initialNumToRender={15}
+            keyExtractor={(node) => node.item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <EmptyState
+                icon="team"
+                message="No team members match your search. Try a different name or clear the search."
+                palette={palette}
               />
-            ) : undefined
-          }
-          removeClippedSubviews={Platform.OS !== 'windows'}
-          renderItem={renderTreeItem}
-          windowSize={10}
-        />
-      ) : (
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={filteredPeople}
-          initialNumToRender={15}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <EmptyState
-              icon="team"
-              message="No team members found."
-              palette={palette}
-            />
-          }
-          maxToRenderPerBatch={15}
-          refreshControl={
-            Platform.OS !== 'windows' ? (
-              <RefreshControl
-                onRefresh={handleRefresh}
-                refreshing={isRefreshing}
-                tintColor={palette.primary}
+            }
+            maxToRenderPerBatch={15}
+            refreshControl={refreshControl}
+            removeClippedSubviews={Platform.OS !== 'windows'}
+            renderItem={renderTreeItem}
+            windowSize={10}
+          />
+        ) : (
+          <FlatList
+            contentContainerStyle={styles.listContent}
+            data={filteredPeople}
+            initialNumToRender={15}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <EmptyState
+                icon="team"
+                message="No team members found. Try a different name or clear the search."
+                palette={palette}
               />
-            ) : undefined
-          }
-          removeClippedSubviews={Platform.OS !== 'windows'}
-          renderItem={renderDirectoryItem}
-          windowSize={10}
-        />
-      )}
+            }
+            maxToRenderPerBatch={15}
+            refreshControl={refreshControl}
+            removeClippedSubviews={Platform.OS !== 'windows'}
+            renderItem={renderDirectoryItem}
+            windowSize={10}
+          />
+        )}
+      </View>
 
       {selectedMember ? (
         <Modal
@@ -426,14 +346,14 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 styles.actionModal,
-                { backgroundColor: palette.card, borderColor: palette.border },
+                { backgroundColor: palette.sheet, borderColor: palette.hairline },
               ]}
             >
               <Text style={[styles.modalTitle, { color: palette.foreground }]}>
                 {selectedMember.name}
               </Text>
-              <Text style={[styles.modalSubtitle, { color: palette.placeholder }]}>
-                {selectedMember.email} {selectedMember.title ? `• ${selectedMember.title}` : ''}
+              <Text style={[styles.modalSubtitle, { color: palette.muted }]}>
+                {selectedMember.title ? `${selectedMember.email}, ${selectedMember.title}` : selectedMember.email}
               </Text>
 
               <View style={styles.modalButtons}>
@@ -448,7 +368,7 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
                   style={[styles.modalActionBtn, { backgroundColor: palette.primary }]}
                 >
                   <Icon name="clock" size={16} color={palette.onPrimary} />
-                  <Text style={[styles.modalActionBtnText, { color: palette.onPrimary }]}>View Timesheets</Text>
+                  <Text style={[styles.modalActionBtnText, { color: palette.onPrimary }]}>View timesheets</Text>
                 </PressableScale>
 
                 <PressableScale
@@ -461,16 +381,13 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
                   }}
                   style={[
                     styles.modalActionBtn,
-                    {
-                      backgroundColor: palette.badgeBg,
-                      borderColor: palette.border,
-                      borderWidth: 1,
-                    },
+                    styles.outlined,
+                    { borderColor: palette.controlBorder },
                   ]}
                 >
                   <Icon name="reports" size={16} color={palette.foreground} />
                   <Text style={[styles.modalActionBtnText, { color: palette.foreground }]}>
-                    View Reports
+                    View reports
                   </Text>
                 </PressableScale>
 
@@ -493,108 +410,52 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  toolbarRow: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-  segmentedContainer: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: 3,
-    minHeight: 44,
-  },
-  segmentBtn: {
+  sheet: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.sm,
-    paddingVertical: spacing.xs,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
   },
-  segmentText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    fontWeight: '700',
+  toolbarRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
   },
   searchContainer: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   searchInput: {
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     fontSize: typography.body,
     minHeight: 48,
     paddingHorizontal: spacing.md,
   },
   errorBox: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
-  personCard: {
+  listContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxl },
+  personRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  treeRowContainer: {
-    marginBottom: spacing.xs,
-  },
-  treeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    padding: spacing.sm,
     minHeight: 56,
-    ...shadows.sm,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   expandToggle: {
     width: 28,
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 4,
+    marginRight: spacing.xs,
   },
-  expandPlaceholder: {
-    width: 28,
-    marginRight: 4,
-  },
-  treeAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  treeAvatarText: { fontSize: 14, fontWeight: '700' },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  avatarText: { fontSize: 18, fontWeight: '700' },
   personInfo: { flex: 1 },
-  personHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  personName: { fontSize: typography.body, fontWeight: '700', flexShrink: 1 },
-  personEmail: { fontSize: typography.caption, marginTop: 1 },
-  personTitle: { fontSize: typography.badge, marginTop: 2 },
-  personDept: { fontSize: typography.badge, marginTop: 1 },
-  directReportsCount: { fontSize: typography.badge, fontWeight: '600', marginTop: 2 },
-  roleBadge: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xs,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-  },
-  roleBadgeText: { fontSize: typography.badge, fontWeight: '700' },
+  personName: { fontSize: typography.body, fontWeight: '600' },
+  personMeta: { fontSize: typography.caption, marginTop: 2 },
+  directReportsCount: { fontSize: typography.caption, marginLeft: spacing.sm },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -605,10 +466,9 @@ const styles = StyleSheet.create({
   actionModal: {
     width: '100%',
     maxWidth: 360,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.sheet,
     borderWidth: 1,
     padding: spacing.xl,
-    ...shadows.md,
   },
   modalScroll: {
     flexGrow: 0,
@@ -617,8 +477,8 @@ const styles = StyleSheet.create({
     maxWidth: 360,
   },
   modalTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
+    fontSize: typography.subtitle,
+    fontWeight: '600',
     marginBottom: 4,
   },
   modalSubtitle: {
@@ -633,20 +493,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
+    minHeight: 52,
+    borderRadius: borderRadius.control,
   },
+  outlined: { borderWidth: 1 },
   modalActionBtnText: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   modalCancelBtn: {
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 44,
     marginTop: spacing.xs,
   },
   modalCancelText: {
-    fontSize: typography.caption,
+    fontSize: typography.body,
     fontWeight: '600',
   },
 });

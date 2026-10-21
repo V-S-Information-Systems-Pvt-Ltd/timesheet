@@ -64,7 +64,7 @@ describe('ReportsScreen insights', () => {
     expect(cards(r)['Expected hours']).toBe('112.0');
     expect(cards(r)['After-office hours']).toBe('2.0');
     expect(cards(r)).not.toHaveProperty('Leave hours');
-    expect(r.root.findAllByProps({ children: 'Total Logged' }).length).toBeGreaterThan(0);
+    expect(r.root.findAllByProps({ children: 'Total logged' }).length).toBeGreaterThan(0);
     await ReactTestRenderer.act(async () => { r.unmount(); });
   });
 

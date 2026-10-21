@@ -12,10 +12,10 @@ jest.mock('../src/api/client');
 jest.setTimeout(15000);
 
 /**
- * Regression guard for the quick-date chips: their label switches to
- * `palette.onPrimary` when selected, so the chip itself must switch to
- * `palette.primary`. It previously stayed on `palette.card`, which is #FFFFFF
- * in light mode — the same color as the label, i.e. 1:1 contrast.
+ * Regression guard for the quick-date chips: a selected chip is an ink fill
+ * (`palette.foreground`) with a `palette.paper` label, and an unselected chip
+ * is the sheet surface with an ink label. A chip that kept the sheet fill
+ * behind a light label would be 1:1 contrast.
  */
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -112,12 +112,12 @@ describe.each<['light' | 'dark', Palette]>([
   ['light', getPalette(false)],
   ['dark', getPalette(true)],
 ])('%s mode quick-date chips', (mode, palette) => {
-  it('paints the selected chip with the primary surface behind its onPrimary label', async () => {
+  it('paints the selected chip with the ink fill behind its paper label', async () => {
     const renderer = await mountLogTime(mode);
     const selected = readChip(renderer, 'Set to today');
 
-    expect(selected.background).toBe(palette.primary);
-    expect(selected.text).toBe(palette.onPrimary);
+    expect(selected.background).toBe(palette.foreground);
+    expect(selected.text).toBe(palette.paper);
     expect(selected.background).not.toBe(selected.text);
     expect(contrastRatio(selected.background, selected.text)).toBeGreaterThanOrEqual(4.5);
   });
@@ -132,7 +132,7 @@ describe.each<['light' | 'dark', Palette]>([
     });
 
     const unselected = readChip(renderer, 'Set to today');
-    expect(unselected.background).toBe(palette.card);
+    expect(unselected.background).toBe(palette.sheet);
     expect(unselected.text).toBe(palette.foreground);
     expect(unselected.background).not.toBe(unselected.text);
     expect(contrastRatio(unselected.background, unselected.text)).toBeGreaterThanOrEqual(4.5);
@@ -148,8 +148,8 @@ describe.each<['light' | 'dark', Palette]>([
     });
     const activity = readChip(renderer, 'Meetings');
 
-    expect(activity.background).toBe(palette.primary);
-    expect(activity.text).toBe(palette.onPrimary);
+    expect(activity.background).toBe(palette.foreground);
+    expect(activity.text).toBe(palette.paper);
     expect(activity.background).not.toBe(activity.text);
     expect(contrastRatio(activity.background, activity.text)).toBeGreaterThanOrEqual(4.5);
   });

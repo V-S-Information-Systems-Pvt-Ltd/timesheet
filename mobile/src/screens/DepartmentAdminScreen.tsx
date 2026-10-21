@@ -6,15 +6,16 @@ import {
   Modal,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/EmptyState';
+import { adminStyles } from '../components/adminStyles';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
@@ -144,34 +145,34 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
   const renderItem = ({ item }: { item: Department }) => (
     <View
       accessibilityLabel={`Department: ${item.name}`}
-      style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+      style={[adminStyles.row, { borderBottomColor: palette.hairline }]}
     >
-      <Text style={[styles.name, { color: palette.foreground }]}>{item.name}</Text>
-      <View style={styles.cardActions}>
+      <Text style={[adminStyles.rowMain, adminStyles.rowTitle, { color: palette.foreground }]}>{item.name}</Text>
+      <View style={adminStyles.rowActions}>
         <PressableScale
           accessibilityLabel={`Rename ${item.name}`}
           accessibilityRole="button"
           disabled={isOffline}
           onPress={() => openForm(item)}
-          style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && styles.disabled]}
+          style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
         >
-          <Icon color={palette.primary} name="edit" size={16} />
+          <Icon color={palette.primary} name="edit" size={18} />
         </PressableScale>
         <PressableScale
           accessibilityLabel={`Delete ${item.name}`}
           accessibilityRole="button"
           disabled={isOffline}
           onPress={() => requestDelete(item)}
-          style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && styles.disabled]}
+          style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
         >
-          <Icon color={colors.danger} name="trash" size={16} />
+          <Icon color={palette.error} name="trash" size={18} />
         </PressableScale>
       </View>
     </View>
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[adminStyles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
@@ -181,53 +182,46 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
             accessibilityRole="button"
             disabled={isOffline}
             onPress={() => openForm(null)}
-            style={[styles.headerActionBtn, isOffline && styles.disabled, { backgroundColor: palette.primary }]}
+            style={[adminStyles.headerAction, isOffline && adminStyles.disabled, { backgroundColor: palette.primary }]}
           >
-            <Icon color={palette.onPrimary} name="plus" size={16} />
-            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New</Text>
+            <Text style={[adminStyles.headerActionText, { color: palette.onPrimary }]}>New department</Text>
           </PressableScale>
         }
         subtitle="Manage organisation departments"
         title="Departments"
       />
 
-      <View style={styles.content}>
+      <View style={[adminStyles.sheet, { backgroundColor: palette.sheet }]}>
         {errorMessage ? (
-          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
-            <Icon color={colors.danger} name="alert-circle" size={18} />
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          <View accessibilityRole="alert" style={[adminStyles.errorBanner, { backgroundColor: palette.errorBoxBg }]}>
+            <Text style={[adminStyles.errorBannerText, { color: palette.error }]}>{errorMessage}</Text>
           </View>
         ) : null}
 
-        <View style={[styles.searchContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Icon color={palette.muted} name="search" size={18} />
-          <TextInput
-            accessibilityLabel="Search departments"
-            onChangeText={setSearch}
-            placeholder="Search departments…"
-            placeholderTextColor={palette.placeholder}
-            style={[styles.searchInput, { color: palette.foreground }]}
-            value={search}
-          />
-        </View>
+        <TextInput
+          accessibilityLabel="Search departments"
+          onChangeText={setSearch}
+          placeholder="Search departments"
+          placeholderTextColor={palette.placeholder}
+          style={[adminStyles.searchInput, { borderColor: palette.controlBorder, color: palette.foreground }]}
+          value={search}
+        />
 
         {loading && !refreshing ? (
-          <View style={styles.centerContainer}>
+          <View style={adminStyles.centered}>
             <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading departments…</Text>
+            <Text style={[adminStyles.muted, { color: palette.muted }]}>Loading departments…</Text>
           </View>
         ) : (
           <FlatList
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={adminStyles.listContent}
             data={filtered}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyTitle, { color: palette.foreground }]}>No departments found</Text>
-                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-                  {search ? 'Try a different search query.' : 'Add your first department using the New button.'}
-                </Text>
-              </View>
+              <EmptyState
+                message={search ? 'No departments match that search. Try a different name.' : 'No departments yet. Add the first one with New department.'}
+                palette={palette}
+              />
             }
             refreshControl={
               <RefreshControl
@@ -244,43 +238,47 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
       </View>
 
       <Modal animationType="slide" transparent visible={formVisible} onRequestClose={() => setFormVisible(false)}>
-        <View style={[styles.modalOverlay, bounds]}>
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>
-              {editing ? 'Rename Department' : 'New Department'}
+        <View style={[adminStyles.modalOverlay, bounds]}>
+          <ScrollView
+            contentContainerStyle={[adminStyles.modalCard, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
+            keyboardShouldPersistTaps="handled"
+            style={adminStyles.modalScroll}
+          >
+            <Text style={[adminStyles.modalTitle, { color: palette.foreground }]}>
+              {editing ? 'Rename department' : 'New department'}
             </Text>
-            {formError ? <Text style={styles.modalError}>{formError}</Text> : null}
+            {formError ? <Text style={[adminStyles.modalError, { color: palette.error }]}>{formError}</Text> : null}
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Department Name *</Text>
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Department name</Text>
             <TextInput
               accessibilityLabel="Department Name"
               onChangeText={setFormName}
               placeholder="e.g. Engineering"
               placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              style={[adminStyles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
               value={formName}
             />
 
-            <View style={styles.modalActions}>
+            <View style={adminStyles.modalActions}>
               <PressableScale
                 accessibilityLabel="Cancel"
                 accessibilityRole="button"
                 onPress={() => setFormVisible(false)}
-                style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
+                style={[adminStyles.btn, adminStyles.btnOutline, { borderColor: palette.controlBorder }]}
               >
-                <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
+                <Text style={[adminStyles.btnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
               <PressableScale
                 accessibilityLabel="Save Department"
                 accessibilityRole="button"
                 disabled={formSubmitting}
                 onPress={handleSubmit}
-                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
+                style={[adminStyles.btn, { backgroundColor: palette.primary }]}
               >
                 {formSubmitting ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>{editing ? 'Save' : 'Create'}</Text>
+                  <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>{editing ? 'Save' : 'Create'}</Text>
                 )}
               </PressableScale>
             </View>
@@ -301,103 +299,3 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { flex: 1, paddingHorizontal: spacing.lg },
-  disabled: { opacity: 0.5 },
-  headerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  headerActionText: { fontSize: typography.caption, fontWeight: '700' },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  errorBannerText: { color: colors.danger, fontSize: typography.caption, fontWeight: '600', flex: 1 },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  searchInput: { flex: 1, fontSize: typography.body, paddingVertical: 0 },
-  listContent: { paddingBottom: spacing.xxl, gap: spacing.sm },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  name: { flex: 1, marginRight: spacing.md, fontSize: typography.body, fontWeight: '700' },
-  cardActions: { flexDirection: 'row', gap: spacing.xs },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  loadingText: { fontSize: typography.caption, fontWeight: '500' },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, gap: spacing.xs },
-  emptyTitle: { fontSize: typography.title, fontWeight: '700', marginTop: spacing.sm },
-  emptySubtitle: { fontSize: typography.caption, textAlign: 'center' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalScroll: { flexGrow: 0, flexShrink: 1, width: '100%' },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    ...shadows.md,
-  },
-  modalTitle: { fontSize: typography.title, fontWeight: '700', marginBottom: spacing.md },
-  modalError: { color: colors.danger, fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.sm },
-  inputLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: 4, marginTop: spacing.xs },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-    marginBottom: spacing.sm,
-  },
-  modalActions: {
-    flexWrap: 'wrap',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  modalBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnText: { fontSize: typography.caption, fontWeight: '700' },
-});

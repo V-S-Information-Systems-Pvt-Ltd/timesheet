@@ -6,7 +6,7 @@ import { HomeScreen } from '../src/screens/HomeScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
-import { formatDateRangeShort, formatDateShort } from '../src/utils/dates';
+import { formatDateRangeShort, formatDayLine } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -243,6 +243,7 @@ describe('HomeScreen', () => {
     return {
       onViewTimesheets: jest.fn(),
       onLogTime: jest.fn(),
+      onLogTimeWithHours: jest.fn(),
       onViewProfile: jest.fn(),
       onViewReports: jest.fn(),
       onViewLeaves: jest.fn(),
@@ -310,7 +311,7 @@ describe('HomeScreen', () => {
 
     // Loaded state still renders after removing the unreachable isLoading branch.
     expect(
-      renderer.root.findAllByProps({ children: 'Recent Timesheet Entries' }).length
+      renderer.root.findAllByProps({ children: 'Recent entries' }).length
     ).toBeGreaterThan(0);
     expect(renderer.root.findAllByProps({ children: 'Loading dashboard...' })).toHaveLength(0);
   });
@@ -319,7 +320,7 @@ describe('HomeScreen', () => {
     const handlers = makeHandlers();
     const renderer = await renderHomeScreen(dashboardPayload, handlers);
 
-    const weekMetric = renderer.root.findAllByProps({ label: 'Last 7 Days' });
+    const weekMetric = renderer.root.findAllByProps({ label: 'Last 7 days' });
     expect(weekMetric.length).toBeGreaterThan(0);
 
     // Value and window both come from the payload: week.hours 37.5 over
@@ -332,7 +333,7 @@ describe('HomeScreen', () => {
 
     // Label and dateLabel both describe the payload's rolling window, in
     // readable copy: no machine-facing ISO date reaches the screen.
-    expect(renderer.root.findAllByProps({ children: 'Last 7 Days' }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ children: 'Last 7 days' }).length).toBeGreaterThan(0);
     expect(
       renderer.root.findAllByProps({
         children: formatDateRangeShort('2026-08-20', '2026-08-26'),
@@ -348,9 +349,67 @@ describe('HomeScreen', () => {
     expect(visibleText.some((text) => text.includes(formatDateRangeShort('2026-08-20', '2026-08-26'))))
       .toBe(true);
 
-    // The Today caption is the payload's date, readably formatted.
-    expect(visibleText).toContain(formatDateShort('2026-08-26'));
+    // The day line is the payload's date, readably formatted.
+    expect(visibleText).toContain(formatDayLine('2026-08-26'));
+    expect(visibleText).toContain('Wednesday 26 August');
     expect(visibleText).not.toContain('2026-08-26');
+  });
+
+  describe('primary Log time action', () => {
+    const withHours = (hours: number) => ({
+      ...dashboardPayload,
+      today: { date: '2026-08-26', hours },
+    });
+    const isLogLabel = (label: unknown) =>
+      typeof label === 'string' && /^Log (time|[\d.]+ h for today)$/.test(label);
+    // Host nodes are counted so one element is one button.
+    const buttons = (renderer: ReactTestRenderer.ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) => typeof node.type === 'string' && isLogLabel(node.props.accessibilityLabel)
+      );
+    const pressPrimary = (renderer: ReactTestRenderer.ReactTestRenderer) =>
+      renderer.root
+        .findAll((node) => isLogLabel(node.props.accessibilityLabel) && typeof node.props.onPress === 'function')[0]
+        .props.onPress();
+
+    it('reads "Log time" and opens a blank entry when nothing is logged', async () => {
+      const handlers = makeHandlers();
+      const renderer = await renderHomeScreen(withHours(0), handlers);
+
+      expect(buttons(renderer).map((n) => n.props.accessibilityLabel)).toEqual(['Log time']);
+      await ReactTestRenderer.act(async () => {
+        pressPrimary(renderer);
+      });
+      expect(handlers.onLogTime).toHaveBeenCalledTimes(1);
+      expect(handlers.onLogTimeWithHours).not.toHaveBeenCalled();
+    });
+
+    it('offers the remainder and prefills it when part of the day is logged', async () => {
+      const handlers = makeHandlers();
+      const renderer = await renderHomeScreen(withHours(6.5), handlers);
+
+      expect(buttons(renderer).map((n) => n.props.accessibilityLabel)).toEqual(['Log 1.5 h for today']);
+      expect(
+        renderer.root.findAllByType(Text).some((node) => node.props.children === 'Log 1.5 h for today')
+      ).toBe(true);
+      await ReactTestRenderer.act(async () => {
+        pressPrimary(renderer);
+      });
+      expect(handlers.onLogTimeWithHours).toHaveBeenCalledWith(1.5);
+      expect(handlers.onLogTime).not.toHaveBeenCalled();
+    });
+
+    it('goes back to "Log time" once the day is full', async () => {
+      const handlers = makeHandlers();
+      const renderer = await renderHomeScreen(withHours(8), handlers);
+
+      expect(buttons(renderer).map((n) => n.props.accessibilityLabel)).toEqual(['Log time']);
+      await ReactTestRenderer.act(async () => {
+        pressPrimary(renderer);
+      });
+      expect(handlers.onLogTime).toHaveBeenCalledTimes(1);
+      expect(handlers.onLogTimeWithHours).not.toHaveBeenCalled();
+    });
   });
 
   it('renders the unauthenticated fallback without the removed loading branch', async () => {
@@ -378,8 +437,10 @@ describe('HomeScreen', () => {
 
     // Fallback metric labels still render, and the nested branch that could
     // never be reached is gone rather than lingering as dead code.
-    expect(renderer!.root.findAllByProps({ label: "Today's Hours" }).length).toBeGreaterThan(0);
-    expect(renderer!.root.findAllByProps({ label: 'Last 7 Days' }).length).toBeGreaterThan(0);
+    expect(
+      renderer!.root.findAllByType(Text).some((node) => node.props.children === 'of 8 h today')
+    ).toBe(true);
+    expect(renderer!.root.findAllByProps({ label: 'Last 7 days' }).length).toBeGreaterThan(0);
     expect(
       renderer!.root.findAllByProps({ children: 'Loading dashboard...' })
     ).toHaveLength(0);

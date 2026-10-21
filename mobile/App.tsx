@@ -414,6 +414,7 @@ export function MainNavigator() {
           <HomeScreen
             isDarkMode={isDarkMode}
             onLogTime={() => navigateTo('log-time')}
+            onLogTimeWithHours={hoursWorked => navigateTo('log-time', { timeEntryDraft: { hoursWorked } })}
             onLogTimeForDate={logDate => navigateTo('log-time', { timeEntryDraft: { logDate } })}
             onViewLeaves={() => navigateTo('leaves')}
             onViewProfile={() => navigateTo('profile')}

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { LeaveRow } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 
 import { EmptyState } from '../components/EmptyState';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -21,6 +21,7 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
 import { DateChooserModal } from '../components/DateChooserModal';
 import { todayISO, addDaysISO, getDatesInRange, formatDatePreview, formatDateShort, isValidISODate } from '../utils/dates';
 
@@ -85,14 +86,14 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
 
   async function handleCreateLeave() {
     if (!reason.trim()) {
-      setError('Reason / Remarks are required.');
+      setError('Add a reason before marking leave.');
       return;
     }
 
     let datesToSubmit: string[] = [];
     if (isRangeMode) {
       if (!startDate.trim() || !endDate.trim()) {
-        setError('Start date and End date are required.');
+        setError('Enter a start and end date, then try again.');
         return;
       }
       if (!isValidISODate(startDate.trim()) || !isValidISODate(endDate.trim())) {
@@ -101,16 +102,16 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
       }
       datesToSubmit = getDatesInRange(startDate.trim(), endDate.trim());
       if (datesToSubmit.length === 0) {
-        setError('End date must be on or after start date.');
+        setError('The last day must be on or after the first day.');
         return;
       }
       if (datesToSubmit.length > 366) {
-        setError('Date range cannot exceed 366 days.');
+        setError('A leave range can cover at most 366 days. Shorten it and try again.');
         return;
       }
     } else {
       if (!leaveDate.trim()) {
-        setError('Leave date is required.');
+        setError('Enter a leave date, then try again.');
         return;
       }
       if (!isValidISODate(leaveDate.trim())) {
@@ -150,7 +151,7 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
 
   const handleDeleteLeave = useCallback(
     async (item: LeaveRow) => {
-      Alert.alert('Delete Leave', `Delete leave on ${formatDatePreview(item.leave_date)}?`, [
+      Alert.alert('Delete leave', `Delete leave on ${formatDatePreview(item.leave_date)}?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
@@ -174,12 +175,24 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
   const keyExtractor = useCallback((item: LeaveRow, index: number) => item.id || String(index), []);
 
   const renderItem = useCallback(
-    ({ item }: { item: LeaveRow }) => (
-      <View style={[styles.leafCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-        <View style={styles.leafHeader}>
-          <Text style={[styles.leafDate, { color: palette.foreground }]}>
-            {formatDateShort(item.leave_date)}
-          </Text>
+    ({ item }: { item: LeaveRow }) => {
+      const valid = isValidISODate(item.leave_date);
+      const day = valid ? String(Number(item.leave_date.slice(8, 10))) : '';
+      const month = valid
+        ? new Date(`${item.leave_date}T12:00:00`).toLocaleDateString(undefined, { month: 'short' })
+        : '';
+      return (
+        <View style={[styles.leafRow, { borderBottomColor: palette.hairline }]}>
+          <View style={[styles.dateBlock, { backgroundColor: palette.leaveTint }]}>
+            <Text style={[styles.dateDay, { color: palette.leave }]}>{day}</Text>
+            <Text style={[styles.dateMonth, { color: palette.leave }]}>{month}</Text>
+          </View>
+          <View style={styles.leafText}>
+            <Text numberOfLines={2} style={[styles.leafReason, { color: palette.foreground }]}>
+              {item.reason}
+            </Text>
+            <Text style={[styles.leafDate, { color: palette.muted }]}>{formatDateShort(item.leave_date)}</Text>
+          </View>
           <Pressable
             accessibilityLabel={`Delete leave on ${formatDateShort(item.leave_date)}`}
             accessibilityRole="button"
@@ -187,12 +200,11 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
             onPress={() => handleDeleteLeave(item)}
             style={styles.deleteButton}
           >
-            <Icon color={colors.error} name="trash" size={16} />
+            <Icon color={palette.error} name="trash" size={16} />
           </Pressable>
         </View>
-        <Text style={[styles.leafReason, { color: palette.muted }]}>{item.reason}</Text>
-      </View>
-    ),
+      );
+    },
     [handleDeleteLeave, palette]
   );
 
@@ -204,16 +216,146 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
         setShowAddForm(!showAddForm);
         setError(null);
       }}
-      style={[styles.actionButton, { backgroundColor: palette.primary }, showAddForm && styles.cancelButton]}
+      style={[
+        styles.actionButton,
+        showAddForm
+          ? [styles.outlined, { borderColor: palette.controlBorder }]
+          : { backgroundColor: palette.primary },
+      ]}
     >
-      <Text style={[styles.actionButtonText, { color: palette.onPrimary }]}>{showAddForm ? 'Cancel' : '+ Mark Leave'}</Text>
+      <Text style={[styles.actionButtonText, { color: showAddForm ? palette.foreground : palette.onPrimary }]}>
+        {showAddForm ? 'Cancel' : 'Mark leave'}
+      </Text>
     </PressableScale>
   );
+
+  const renderDateRow = (
+    label: string,
+    inputLabel: string,
+    value: string,
+    onChange: (v: string) => void,
+    pickerLabel: string,
+    onPick: () => void,
+    quick?: React.ReactNode
+  ) => (
+    <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+      <Text style={[styles.rowLabel, { color: palette.muted }]}>{label}</Text>
+      <View style={styles.dateRow}>
+        <TextInput
+          accessibilityLabel={inputLabel}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={onChange}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={palette.placeholder}
+          style={[styles.input, styles.dateInput, { color: palette.foreground }]}
+          value={value}
+        />
+        <PressableScale
+          accessibilityLabel={pickerLabel}
+          accessibilityRole="button"
+          onPress={onPick}
+          style={styles.iconButton}
+        >
+          <Icon color={palette.primary} name="calendar" size={18} />
+        </PressableScale>
+      </View>
+      {quick}
+    </View>
+  );
+
+  const form = showAddForm ? (
+    <View style={styles.form}>
+      <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+        <Text style={[styles.rowLabel, { color: palette.muted }]}>Days</Text>
+        <View style={styles.chipLine}>
+          <Chip
+            accessibilityLabel="Single day mode"
+            active={!isRangeMode}
+            label="Single day"
+            onPress={() => setIsRangeMode(false)}
+            palette={palette}
+          />
+          <Chip
+            accessibilityLabel="Date range mode"
+            active={isRangeMode}
+            label="Date range"
+            onPress={() => setIsRangeMode(true)}
+            palette={palette}
+          />
+        </View>
+      </View>
+
+      {!isRangeMode ? (
+        renderDateRow(
+          'Leave date',
+          'Leave Date',
+          leaveDate,
+          setLeaveDate,
+          'Open leave date picker',
+          () => setLeavePickerVisible(true),
+          <View style={styles.chipLine}>
+            <Chip
+              accessibilityLabel="Set leave to today"
+              active={leaveDate === today}
+              label="Today"
+              onPress={() => setLeaveDate(today)}
+              palette={palette}
+            />
+            <Chip
+              accessibilityLabel="Set leave to tomorrow"
+              active={leaveDate === tomorrow}
+              label="Tomorrow"
+              onPress={() => setLeaveDate(tomorrow)}
+              palette={palette}
+            />
+          </View>
+        )
+      ) : (
+        <>
+          {renderDateRow('First day', 'Start Date', startDate, setStartDate, 'Open start date picker', () =>
+            setRangePickerTarget('start')
+          )}
+          {renderDateRow('Last day', 'End Date', endDate, setEndDate, 'Open end date picker', () =>
+            setRangePickerTarget('end')
+          )}
+        </>
+      )}
+
+      <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+        <Text style={[styles.rowLabel, { color: palette.muted }]}>Reason</Text>
+        <TextInput
+          accessibilityLabel="Leave Reason"
+          autoCapitalize="sentences"
+          autoCorrect={true}
+          onChangeText={setReason}
+          placeholder="Annual leave, medical, conference"
+          placeholderTextColor={palette.placeholder}
+          returnKeyType="done"
+          style={[styles.input, { color: palette.foreground }]}
+          value={reason}
+        />
+      </View>
+
+      <PressableScale
+        accessibilityLabel="Submit leave"
+        accessibilityRole="button"
+        accessibilityState={{ busy: isSubmitting }}
+        disabled={isSubmitting}
+        onPress={handleCreateLeave}
+        style={[styles.submitButton, { backgroundColor: palette.primary }]}
+      >
+        <Text style={[styles.submitButtonText, { color: palette.onPrimary }]}>
+          {isSubmitting ? 'Saving...' : isRangeMode ? 'Mark leave days' : 'Mark leave'}
+        </Text>
+      </PressableScale>
+    </View>
+  ) : null;
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.container, { backgroundColor: palette.background }]}
+      style={[styles.container, { backgroundColor: palette.paper }]}
     >
       <Toast
         message={toastMessage}
@@ -223,250 +365,56 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
         visible={showToast}
       />
 
-      {/* Header */}
       <ScreenHeader
         backLabel="‹ Dashboard"
         onBack={onBack}
         palette={palette}
         rightAction={rightAction}
-        title="Leaves & Absences"
+        title="Leaves"
       />
 
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
         </View>
       ) : null}
 
-      {/* Add Leave Form Drawer */}
-      {showAddForm ? (
-        <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.formTitleRow}>
-            <Text style={[styles.formTitle, { color: palette.foreground }]}>Mark Leave</Text>
-            {/* Mode switch: Single vs Range */}
-            <View style={styles.modeToggleRow}>
-              <Pressable
-                accessibilityLabel="Single day mode"
-                accessibilityRole="button"
-                onPress={() => setIsRangeMode(false)}
-                style={[
-                  styles.modeButton,
-                  !isRangeMode && [styles.modeButtonActive, { backgroundColor: palette.primary }],
-                  { borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.modeButtonText, !isRangeMode && [styles.modeButtonTextActive, { color: palette.onPrimary }]]}>
-                  Single
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Date range mode"
-                accessibilityRole="button"
-                onPress={() => setIsRangeMode(true)}
-                style={[
-                  styles.modeButton,
-                  isRangeMode && [styles.modeButtonActive, { backgroundColor: palette.primary }],
-                  { borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.modeButtonText, isRangeMode && [styles.modeButtonTextActive, { color: palette.onPrimary }]]}>
-                  Range
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          {!isRangeMode ? (
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Leave Date (YYYY-MM-DD)</Text>
-              <View style={styles.dateRow}>
-                <TextInput
-                  accessibilityLabel="Leave Date"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setLeaveDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={palette.placeholder}
-                  style={[
-                    styles.input,
-                    styles.dateInput,
-                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                  ]}
-                  value={leaveDate}
-                />
-                <PressableScale
-                  accessibilityLabel="Open leave date picker"
-                  accessibilityRole="button"
-                  onPress={() => setLeavePickerVisible(true)}
-                  style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-                >
-                  <Icon color={palette.primary} name="calendar" size={16} />
-                </PressableScale>
-                <PressableScale
-                  accessibilityLabel="Set leave to today"
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: leaveDate === today }}
-                  onPress={() => setLeaveDate(today)}
-                  style={[
-                    styles.presetButton,
-                    leaveDate === today && styles.presetButtonActive,
-                    { borderColor: palette.border, backgroundColor: palette.card },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.presetText,
-                      leaveDate === today ? styles.presetTextActive : { color: palette.foreground },
-                    ]}
-                  >
-                    Today
-                  </Text>
-                </PressableScale>
-                <PressableScale
-                  accessibilityLabel="Set leave to tomorrow"
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: leaveDate === tomorrow }}
-                  onPress={() => setLeaveDate(tomorrow)}
-                  style={[
-                    styles.presetButton,
-                    leaveDate === tomorrow && styles.presetButtonActive,
-                    { borderColor: palette.border, backgroundColor: palette.card },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.presetText,
-                      leaveDate === tomorrow ? styles.presetTextActive : { color: palette.foreground },
-                    ]}
-                  >
-                    Tomorrow
-                  </Text>
-                </PressableScale>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.rangeContainer}>
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Start Date (YYYY-MM-DD)</Text>
-                <View style={styles.dateRow}>
-                  <TextInput
-                    accessibilityLabel="Start Date"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    onChangeText={setStartDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={palette.placeholder}
-                    style={[
-                      styles.input,
-                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                    ]}
-                    value={startDate}
-                  />
-                  <PressableScale
-                    accessibilityLabel="Open start date picker"
-                    accessibilityRole="button"
-                    onPress={() => setRangePickerTarget('start')}
-                    style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-                  >
-                    <Icon color={palette.primary} name="calendar" size={16} />
-                  </PressableScale>
-                </View>
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>End Date (YYYY-MM-DD)</Text>
-                <View style={styles.dateRow}>
-                  <TextInput
-                    accessibilityLabel="End Date"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    onChangeText={setEndDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={palette.placeholder}
-                    style={[
-                      styles.input,
-                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                    ]}
-                    value={endDate}
-                  />
-                  <PressableScale
-                    accessibilityLabel="Open end date picker"
-                    accessibilityRole="button"
-                    onPress={() => setRangePickerTarget('end')}
-                    style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-                  >
-                    <Icon color={palette.primary} name="calendar" size={16} />
-                  </PressableScale>
-                </View>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Reason / Remarks</Text>
-            <TextInput
-              accessibilityLabel="Leave Reason"
-              autoCapitalize="sentences"
-              autoCorrect={true}
-              onChangeText={setReason}
-              placeholder="e.g. Annual leave, Medical"
-              placeholderTextColor={palette.placeholder}
-              returnKeyType="done"
-              style={[
-                styles.input,
-                { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-              ]}
-              value={reason}
-            />
-          </View>
-
-          <PressableScale
-            accessibilityLabel="Submit leave"
-            accessibilityRole="button"
-            accessibilityState={{ busy: isSubmitting }}
-            disabled={isSubmitting}
-            onPress={handleCreateLeave}
-            style={[styles.submitButton, { backgroundColor: palette.primary }]}
-          >
-            <Text style={[styles.submitButtonText, { color: palette.onPrimary }]}>
-              {isSubmitting ? 'Submitting...' : isRangeMode ? 'Mark Leave Range' : 'Mark Leave'}
-            </Text>
-          </PressableScale>
-        </View>
-      ) : null}
-
-      {isLoading ? (
-        <LoadingState message="Loading leaves..." palette={palette} />
-      ) : (
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={leaves}
-          initialNumToRender={10}
-          keyExtractor={keyExtractor}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <EmptyState
-              actionLabel="+ Mark Leave"
-              icon="calendar"
-              message="No recorded leaves found."
-              onAction={() => setShowAddForm(true)}
-              palette={palette}
-            />
-          }
-          maxToRenderPerBatch={10}
-          refreshControl={
-            Platform.OS !== 'windows' ? (
-              <RefreshControl
-                onRefresh={handleRefresh}
-                refreshing={isRefreshing}
-                tintColor={palette.primary}
+      <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
+        {isLoading ? (
+          <LoadingState message="Loading leaves..." palette={palette} />
+        ) : (
+          <FlatList
+            contentContainerStyle={styles.listContent}
+            data={leaves}
+            initialNumToRender={10}
+            keyExtractor={keyExtractor}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <EmptyState
+                actionLabel="Mark a day off"
+                icon="calendar"
+                message="No leave recorded yet. Mark a day off and it will show up here."
+                onAction={() => setShowAddForm(true)}
+                palette={palette}
               />
-            ) : undefined
-          }
-          removeClippedSubviews={Platform.OS !== 'windows'}
-          renderItem={renderItem}
-          windowSize={5}
-        />
-      )}
+            }
+            ListHeaderComponent={form}
+            maxToRenderPerBatch={10}
+            refreshControl={
+              Platform.OS !== 'windows' ? (
+                <RefreshControl
+                  onRefresh={handleRefresh}
+                  refreshing={isRefreshing}
+                  tintColor={palette.primary}
+                />
+              ) : undefined
+            }
+            removeClippedSubviews={Platform.OS !== 'windows'}
+            renderItem={renderItem}
+            windowSize={5}
+          />
+        )}
+      </View>
 
       <DateChooserModal
         visible={leavePickerVisible}
@@ -504,109 +452,86 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  actionButton: {
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    minHeight: 36,
-    justifyContent: 'center',
-    ...shadows.sm,
+  sheet: {
+    flex: 1,
+    marginTop: spacing.sm,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
   },
-  cancelButton: { backgroundColor: colors.muted },
-  actionButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  actionButton: {
+    borderRadius: borderRadius.control,
+    paddingHorizontal: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  outlined: { borderWidth: 1 },
+  actionButtonText: { fontSize: typography.caption, fontWeight: '600' },
   errorBox: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
-  formCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    ...shadows.md,
+  form: { marginBottom: spacing.md },
+  row: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  formTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  formTitle: { fontSize: typography.heading, fontWeight: '700' },
-  modeToggleRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  modeButton: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  modeButtonActive: {},
-  modeButtonText: {
-    fontSize: typography.badge,
-    fontWeight: '700',
-  },
-  modeButtonTextActive: {},
-  rangeContainer: {
-    gap: spacing.xs,
-  },
-  fieldGroup: { marginBottom: spacing.sm },
-  fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: 2 },
-  dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  rowLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
+  chipLine: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dateInput: { flex: 1 },
-  presetButton: {
-    borderWidth: 1,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-    justifyContent: 'center',
+  iconButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
-    ...shadows.sm,
+    justifyContent: 'center',
   },
-  presetButtonActive: {},
-  presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: {},
   input: {
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     fontSize: typography.body,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
+    minHeight: 44,
+    paddingHorizontal: 0,
   },
   submitButton: {
     alignItems: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
-    marginTop: spacing.sm,
-    minHeight: 48,
-    ...shadows.sm,
+    marginTop: spacing.lg,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
   },
-  submitButtonText: { fontSize: typography.body, fontWeight: '700' },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
-  leafCard: {
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  leafHeader: {
+  submitButtonText: { fontSize: typography.body, fontWeight: '600' },
+  listContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxl },
+  leafRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  leafDate: { fontSize: typography.body, fontWeight: '700' },
+  dateBlock: {
+    width: 52,
+    height: 56,
+    borderRadius: borderRadius.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateDay: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.sm,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  dateMonth: { fontSize: typography.badge, fontWeight: '600' },
+  leafText: { flex: 1 },
+  leafReason: { fontSize: typography.body, fontWeight: '600' },
+  leafDate: { fontSize: typography.caption, marginTop: 2 },
   deleteButton: {
-    padding: spacing.xs,
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  leafReason: { fontSize: typography.caption, marginTop: spacing.xs, lineHeight: 18 },
 });

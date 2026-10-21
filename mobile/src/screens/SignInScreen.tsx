@@ -14,8 +14,9 @@ import {
   View,
 } from 'react-native';
 import { useSessionStatus, useSessionActions } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, fonts, numeralSizes, spacing, typography, borderRadius, getPalette } from '../theme';
 import { PressableScale } from '../components/PressableScale';
+import { Chip } from '../components/Chip';
 import { validateWorkspaceUrl } from '../storage/workspace-store';
 
 interface SignInScreenProps {
@@ -24,8 +25,8 @@ interface SignInScreenProps {
 }
 
 export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps) {
-  const palette = getPalette(isDarkMode);
   const { status, error, serverUrl, branding, clearError } = useSessionStatus();
+  const palette = getPalette(isDarkMode, branding?.primaryColor);
   const { signIn, signup } = useSessionActions();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -51,17 +52,17 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
-      setValidationError('Please enter your email address.');
+      setValidationError('Enter your email address to continue.');
       return;
     }
     if (!password) {
-      setValidationError('Please enter your password.');
+      setValidationError('Enter your password to continue.');
       return;
     }
 
     if (mode === 'signup') {
       if (password.length < 8) {
-        setValidationError('Password must be at least 8 characters long.');
+        setValidationError('Use at least 8 characters for your password.');
         return;
       }
       setIsSigningUp(true);
@@ -74,7 +75,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
         setSignupSuccessMsg(res.message);
         setMode('signin');
       } catch (err) {
-        setValidationError(err instanceof Error ? err.message : 'Registration failed.');
+        setValidationError(err instanceof Error ? err.message : 'Could not create your account. Check your details and try again.');
       } finally {
         setIsSigningUp(false);
       }
@@ -103,6 +104,16 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
     }
   }, [serverUrl]);
 
+  const accent = palette.primary;
+  const inputStyle = (hasError: boolean) => [
+    styles.input,
+    {
+      backgroundColor: palette.sheet,
+      borderColor: hasError ? palette.error : palette.controlBorder,
+      color: palette.foreground,
+    },
+  ];
+
   return (
     <KeyboardAvoidingView
       // Android targetSdk 36 runs edge-to-edge, which ignores adjustResize; 'height' is needed to lift fields.
@@ -110,7 +121,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
       // The SafeAreaView above shifts this view down by the status bar; without the offset the
       // keyboard overlap is underestimated by that much and the password field stays partly covered.
       keyboardVerticalOffset={Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0}
-      style={[styles.container, { backgroundColor: palette.background }]}
+      style={[styles.container, { backgroundColor: palette.paper }]}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -122,18 +133,17 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           onPress={onBackToConnect}
           style={styles.backButton}
         >
-          <Text style={[styles.backButtonText, { color: branding?.primaryColor || colors.primary }]}>‹ Change workspace</Text>
+          <Text style={[styles.backButtonText, { color: accent }]}>‹ Change workspace</Text>
         </Pressable>
 
         <View style={styles.header}>
           <Brand appName={branding?.appName} logoUrl={branding?.logoUrl} />
-          <Text style={[styles.eyebrow, { color: branding?.primaryColor || colors.primary }]}>
-            {(branding?.appName || 'VSIS TIMESHEET').toUpperCase()}
+          <Text style={[styles.workspaceName, { color: palette.muted }]}>
+            {branding?.appName || 'VSIS Timesheet'}
           </Text>
           <Text style={[styles.title, { color: palette.foreground }]}>
-            {mode === 'signin' ? 'Sign In' : 'Create Account'}
+            {mode === 'signin' ? 'Sign in' : 'Create account'}
           </Text>
-          <Text style={[styles.tagline, { color: palette.muted }]}>Transforming technology to business success.</Text>
           {serverUrl ? (
             <Text style={[styles.serverBadge, { color: palette.muted }]}>
               Workspace: {serverUrl}
@@ -141,69 +151,44 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           ) : null}
         </View>
 
-        {/* Tab switch: Sign In vs Sign Up */}
         <View style={styles.tabContainer}>
-          <Pressable
+          <Chip
             accessibilityLabel="Switch to Sign In"
-            accessibilityRole="button"
+            active={mode === 'signin'}
+            label="Sign in"
             onPress={() => {
               setMode('signin');
               setValidationError(null);
               clearError();
             }}
-            style={[
-              styles.tab,
-              mode === 'signin' && styles.tabActive,
-              { borderColor: palette.border },
-            ]}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                mode === 'signin' ? styles.tabTextActive : { color: palette.muted },
-              ]}
-            >
-              Sign In
-            </Text>
-          </Pressable>
-          <Pressable
+            palette={palette}
+          />
+          <Chip
             accessibilityLabel="Switch to Register Account"
-            accessibilityRole="button"
+            active={mode === 'signup'}
+            label="Register"
             onPress={() => {
               setMode('signup');
               setValidationError(null);
               clearError();
             }}
-            style={[
-              styles.tab,
-              mode === 'signup' && styles.tabActive,
-              { borderColor: palette.border },
-            ]}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                mode === 'signup' ? styles.tabTextActive : { color: palette.muted },
-              ]}
-            >
-              Register
-            </Text>
-          </Pressable>
+            palette={palette}
+          />
         </View>
 
         {signupSuccessMsg ? (
           <View
             accessibilityRole="alert"
-            style={[styles.successBox, { backgroundColor: palette.badgeBg, borderColor: colors.primary }]}
+            style={[styles.successBox, { backgroundColor: palette.loggedTint }]}
           >
-            <Text style={[styles.successText, { color: colors.primary }]}>{signupSuccessMsg}</Text>
+            <Text style={[styles.successText, { color: palette.loggedText }]}>{signupSuccessMsg}</Text>
           </View>
         ) : null}
 
         <View style={styles.form}>
           {mode === 'signup' ? (
             <View style={styles.fieldGroup}>
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Full Name (Optional)</Text>
+              <Text style={[styles.fieldLabel, { color: palette.muted }]}>Full name (optional)</Text>
               <TextInput
                 accessibilityLabel="Full Name"
                 autoCapitalize="words"
@@ -211,24 +196,17 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                 blurOnSubmit={false}
                 onChangeText={setName}
                 onSubmitEditing={() => emailInputRef.current?.focus()}
-                placeholder="e.g. Jane Doe"
+                placeholder="Jane Doe"
                 placeholderTextColor={palette.placeholder}
                 returnKeyType="next"
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: palette.card,
-                    borderColor: palette.border,
-                    color: palette.foreground,
-                  },
-                ]}
+                style={inputStyle(false)}
                 value={name}
               />
             </View>
           ) : null}
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Email address</Text>
+            <Text style={[styles.fieldLabel, { color: palette.muted }]}>Work email</Text>
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
@@ -246,21 +224,14 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               placeholderTextColor={palette.placeholder}
               ref={emailInputRef}
               returnKeyType="next"
-              style={[
-                styles.input,
-                {
-                  backgroundColor: palette.card,
-                  borderColor: activeError ? colors.error : palette.border,
-                  color: palette.foreground,
-                },
-              ]}
+              style={inputStyle(Boolean(activeError))}
               textContentType="emailAddress"
               value={email}
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Password</Text>
+            <Text style={[styles.fieldLabel, { color: palette.muted }]}>Password</Text>
             <View style={styles.passwordContainer}>
               <TextInput
                 accessibilityLabel="Password"
@@ -277,20 +248,12 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                     handleSubmit();
                   }
                 }}
-                placeholder={mode === 'signup' ? 'Min 8 chars, 1 uppercase, 1 number' : 'Enter your password'}
+                placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
                 placeholderTextColor={palette.placeholder}
                 ref={passwordInputRef}
                 returnKeyType={mode === 'signin' ? 'go' : 'done'}
                 secureTextEntry={!showPassword}
-                style={[
-                  styles.input,
-                  styles.passwordInput,
-                  {
-                    backgroundColor: palette.card,
-                    borderColor: activeError ? colors.error : palette.border,
-                    color: palette.foreground,
-                  },
-                ]}
+                style={[...inputStyle(Boolean(activeError)), styles.passwordInput]}
                 textContentType="password"
                 value={password}
               />
@@ -313,7 +276,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               accessibilityRole="alert"
               style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}
             >
-              <Text style={[styles.errorText, { color: colors.error }]}>{activeError}</Text>
+              <Text style={[styles.errorText, { color: palette.error }]}>{activeError}</Text>
             </View>
           ) : null}
 
@@ -323,12 +286,14 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
             onPress={handleSubmit}
-            style={styles.button}
+            style={[styles.button, { backgroundColor: palette.primary }]}
           >
             {isSubmitting ? (
-              <ActivityIndicator color={colors.onPrimary} />
+              <ActivityIndicator color={palette.onPrimary} />
             ) : (
-              <Text style={styles.buttonText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
+              <Text style={[styles.buttonText, { color: palette.onPrimary }]}>
+                {mode === 'signin' ? 'Sign in' : 'Create account'}
+              </Text>
             )}
           </PressableScale>
 
@@ -339,7 +304,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               onPress={handleForgotPassword}
               style={styles.forgotPassword}
             >
-              <Text style={[styles.forgotPasswordText, { color: branding?.primaryColor || colors.primary }]}>
+              <Text style={[styles.forgotPasswordText, { color: accent }]}>
                 Forgot password?
               </Text>
             </Pressable>
@@ -383,52 +348,35 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
   },
-  backButton: { alignSelf: 'flex-start', marginBottom: spacing.md, paddingVertical: spacing.xs },
+  backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginBottom: spacing.sm },
   backButtonText: { fontSize: typography.body, fontWeight: '600' },
-  header: { marginBottom: spacing.md },
+  header: { marginBottom: spacing.lg },
+  // The logo is a JPEG on white, so it keeps a white tile; no shadow.
   brandMark: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.control,
     height: 72,
     justifyContent: 'center',
     marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     width: 180,
-    ...shadows.sm,
   },
   brandLogo: { height: 58, width: 156 },
-  eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },
-  title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
-  tagline: { fontSize: typography.caption, marginTop: spacing.xs },
+  workspaceName: { fontSize: typography.body, fontWeight: '500', marginBottom: spacing.xs },
+  title: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.lg,
+    fontWeight: '600',
+  },
   serverBadge: { fontSize: typography.caption, marginTop: spacing.xs },
   tabContainer: {
     flexDirection: 'row',
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     gap: spacing.sm,
   },
-  tab: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  tabText: {
-    fontSize: typography.body,
-    fontWeight: '700',
-  },
-  tabTextActive: {
-    color: colors.onPrimary,
-  },
   successBox: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
@@ -439,9 +387,9 @@ const styles = StyleSheet.create({
   },
   form: { width: '100%' },
   fieldGroup: { marginBottom: spacing.md },
-  fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },
+  fieldLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
   input: {
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     fontSize: typography.body,
     minHeight: 48,
@@ -458,7 +406,7 @@ const styles = StyleSheet.create({
   },
   eyeText: { fontSize: typography.caption, fontWeight: '600' },
   errorBox: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginTop: spacing.xs,
     marginBottom: spacing.md,
     padding: spacing.md,
@@ -466,15 +414,13 @@ const styles = StyleSheet.create({
   errorText: { fontSize: typography.caption, fontWeight: '600', lineHeight: 18 },
   button: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
     marginTop: spacing.sm,
-    minHeight: 48,
+    minHeight: 52,
     paddingHorizontal: spacing.lg,
-    ...shadows.sm,
   },
-  buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
-  forgotPassword: { alignItems: 'center', marginTop: spacing.md, paddingVertical: spacing.xs },
-  forgotPasswordText: { fontSize: typography.caption, fontWeight: '700' },
+  buttonText: { fontSize: typography.body, fontWeight: '600' },
+  forgotPassword: { alignItems: 'center', justifyContent: 'center', minHeight: 44, marginTop: spacing.sm },
+  forgotPasswordText: { fontSize: typography.caption, fontWeight: '600' },
 });

@@ -6,6 +6,7 @@ import { Icon, ICON_NAMES, type IconName } from './Icon';
 
 interface EmptyStateProps {
   icon?: IconName | string;
+  /** Write as an invitation: what this place is for, then what to do next. */
   message: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -22,16 +23,11 @@ export function EmptyState({
   const isKnownIcon = typeof icon === 'string' && ICON_NAMES.has(icon);
 
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: palette.card, borderColor: palette.border },
-      ]}
-    >
+    <View style={[styles.container, { borderColor: palette.hairline }]}>
       {icon ? (
         isKnownIcon ? (
           <View style={styles.iconWrapper}>
-            <Icon color={palette.muted} name={icon as IconName} size={36} />
+            <Icon color={palette.muted} name={icon as IconName} size={32} />
           </View>
         ) : (
           <Text style={[styles.icon, { color: palette.muted }]}>{icon}</Text>
@@ -43,9 +39,9 @@ export function EmptyState({
           accessibilityLabel={actionLabel}
           accessibilityRole="button"
           onPress={onAction}
-          style={[styles.actionButton, { backgroundColor: palette.badgeBg }]}
+          style={[styles.actionButton, { backgroundColor: palette.primary }]}
         >
-          <Text style={[styles.actionButtonText, { color: palette.primary }]}>{actionLabel}</Text>
+          <Text style={[styles.actionButtonText, { color: palette.onPrimary }]}>{actionLabel}</Text>
         </PressableScale>
       ) : null}
     </View>
@@ -53,11 +49,11 @@ export function EmptyState({
 }
 
 const styles = StyleSheet.create({
-  card: {
+  container: {
     alignItems: 'center',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: spacing.xl,
+    borderTopWidth: 1,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
   iconWrapper: {
@@ -73,16 +69,16 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   actionButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
   actionButtonText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
+    fontSize: typography.body,
+    fontWeight: '600',
   },
 });

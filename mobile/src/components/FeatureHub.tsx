@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon, ICON_NAMES, type IconName } from './Icon';
 
@@ -26,12 +26,9 @@ export function FeatureHub({ items, palette }: FeatureHubProps) {
             accessibilityLabel={item.accessibilityLabel}
             accessibilityRole="button"
             onPress={item.onPress}
-            style={[
-              styles.hubButton,
-              { backgroundColor: palette.card, borderColor: palette.border },
-            ]}
+            style={styles.hubButton}
           >
-            <View style={[styles.iconBadge, { backgroundColor: palette.badgeBg }]}>
+            <View style={styles.iconWrap}>
               {typeof item.icon === 'string' && ICON_NAMES.has(item.icon) ? (
                 <Icon color={palette.primary} name={item.icon as IconName} size={20} />
               ) : (
@@ -53,7 +50,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginBottom: spacing.md,
   },
   hubItemThree: {
     flex: 1,
@@ -66,17 +62,12 @@ const styles = StyleSheet.create({
   hubButton: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 74,
-    ...shadows.sm,
+    minHeight: 64,
   },
-  iconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.sm,
+  iconWrap: {
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
@@ -86,7 +77,7 @@ const styles = StyleSheet.create({
   },
   hubLabel: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

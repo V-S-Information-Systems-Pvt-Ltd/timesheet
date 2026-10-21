@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { fonts, spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { useModalBounds } from '../utils/modal-layout';
@@ -91,8 +91,8 @@ export function SearchablePickerModal({
           style={[
             styles.itemRow,
             {
-              backgroundColor: isSelected ? palette.badgeBg : palette.card,
-              borderColor: isSelected ? palette.primary : palette.border,
+              backgroundColor: isSelected ? palette.badgeBg : palette.paper,
+              borderBottomColor: palette.hairline,
             },
           ]}
         >
@@ -140,7 +140,7 @@ export function SearchablePickerModal({
       return (
         <View style={styles.emptyContainer}>
           <ActivityIndicator color={palette.primary} size="large" />
-          <Text style={[styles.emptyText, { color: palette.muted, marginTop: spacing.md }]}>
+          <Text style={[styles.emptyText, styles.loadingText, { color: palette.muted }]}>
             Loading items...
           </Text>
         </View>
@@ -184,7 +184,7 @@ export function SearchablePickerModal({
     >
       <SafeAreaView style={[styles.container, bounds, { backgroundColor: palette.background }]}>
         {/* Header */}
-        <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <View style={[styles.header, { borderBottomColor: palette.hairline }]}>
           <View style={styles.headerTitleRow}>
             <Text style={[styles.title, { color: palette.foreground }]}>{title}</Text>
             <Pressable
@@ -202,7 +202,7 @@ export function SearchablePickerModal({
           <View
             style={[
               styles.searchBar,
-              { backgroundColor: palette.card, borderColor: palette.border },
+              { backgroundColor: palette.sheet, borderColor: palette.controlBorder },
             ]}
           >
             <Icon color={palette.placeholder} name="search" size={16} style={styles.searchIcon} />
@@ -270,8 +270,9 @@ const styles = StyleSheet.create({
   title: {
     flexShrink: 1,
     marginRight: spacing.sm,
-    fontSize: typography.heading,
-    fontWeight: '800',
+    fontFamily: fonts.numeral,
+    fontSize: typography.title,
+    fontWeight: '600',
   },
   closeButton: {
     paddingHorizontal: spacing.sm,
@@ -282,13 +283,13 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     paddingHorizontal: spacing.md,
     height: 46,
   },
@@ -316,13 +317,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
     minHeight: 52,
-    ...shadows.sm,
   },
   itemTextContainer: {
     flex: 1,
@@ -335,7 +333,7 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
     flexShrink: 1,
   },
   itemBadge: {
@@ -360,6 +358,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xxl,
+  },
+  loadingText: {
+    marginTop: spacing.md,
   },
   emptyIcon: {
     marginBottom: spacing.sm,

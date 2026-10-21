@@ -6,15 +6,17 @@ import {
   Modal,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
+import { EmptyState } from '../components/EmptyState';
+import { adminStyles } from '../components/adminStyles';
 import { useModalBounds } from '../utils/modal-layout';
 import { formatDatePreview, formatDateShort, todayISO } from '../utils/dates';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
@@ -149,7 +151,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
     const user = usersById.get(leave.user_id);
     const name = user ? user.name || user.email : 'user';
     Alert.alert(
-      'Remove Leave Marker',
+      'Remove leave marker',
       `Are you sure you want to remove the leave marker on ${formatDatePreview(
         leave.leave_date
       )} for ${name}?`,
@@ -173,7 +175,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[adminStyles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
@@ -183,60 +185,47 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
+            style={[adminStyles.headerAction, isOffline && adminStyles.disabled, { backgroundColor: palette.primary }]}
           >
-            <Icon color={palette.onPrimary} name="plus" size={16} />
-            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>Record Leave</Text>
+            <Text style={[adminStyles.headerActionText, { color: palette.onPrimary }]}>Record leave</Text>
           </PressableScale>
         }
         subtitle="Manage global and team member leave records"
-        title="Leave Administration"
+        title="Leave administration"
       />
 
-      <View style={styles.content}>
+      <View style={[adminStyles.sheet, { backgroundColor: palette.sheet }]}>
         {errorMessage ? (
-          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
-            <Icon color={colors.danger} name="alert-circle" size={18} />
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          <View accessibilityRole="alert" style={[adminStyles.errorBanner, { backgroundColor: palette.errorBoxBg }]}>
+            <Text style={[adminStyles.errorBannerText, { color: palette.error }]}>{errorMessage}</Text>
           </View>
         ) : null}
 
-        {/* Search */}
-        <View style={[styles.searchContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Icon color={palette.muted} name="search" size={18} />
-          <TextInput
-            accessibilityLabel="Search leaves"
-            onChangeText={setSearch}
-            placeholder="Search by name, date (YYYY-MM-DD), or reason…"
-            placeholderTextColor={palette.placeholder}
-            style={[styles.searchInput, { color: palette.foreground }]}
-            value={search}
-          />
-          {search ? (
-            <PressableScale accessibilityLabel="Clear search" accessibilityRole="button" onPress={() => setSearch('')}>
-              <Icon color={palette.muted} name="close" size={16} />
-            </PressableScale>
-          ) : null}
-        </View>
+        <TextInput
+          accessibilityLabel="Search leaves"
+          onChangeText={setSearch}
+          placeholder="Search by name, date (YYYY-MM-DD) or reason"
+          placeholderTextColor={palette.placeholder}
+          style={[adminStyles.searchInput, { borderColor: palette.controlBorder, color: palette.foreground }]}
+          value={search}
+        />
 
         {loading && !refreshing ? (
-          <View style={styles.centerContainer}>
+          <View style={adminStyles.centered}>
             <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading leave records…</Text>
+            <Text style={[adminStyles.muted, { color: palette.muted }]}>Loading leave records…</Text>
           </View>
         ) : (
           <FlatList
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={adminStyles.listContent}
             data={filteredLeaves}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Icon color={palette.muted} name="calendar" size={40} />
-                <Text style={[styles.emptyTitle, { color: palette.foreground }]}>No leave records</Text>
-                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-                  {search ? 'Try adjusting your search query.' : 'Record leaves on behalf of team members.'}
-                </Text>
-              </View>
+              <EmptyState
+                icon="calendar"
+                message={search ? 'No leave records match that search. Try a different name, date or reason.' : 'No leave recorded yet. Record leave on behalf of a team member.'}
+                palette={palette}
+              />
             }
             refreshControl={
               <RefreshControl
@@ -252,28 +241,26 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
               return (
                 <View
                   accessibilityLabel={`Leave for ${displayName} on ${formatDateShort(item.leave_date)}`}
-                  style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+                  style={[adminStyles.row, { borderBottomColor: palette.hairline }]}
                 >
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardInfo}>
-                      <Text style={[styles.userName, { color: palette.foreground }]}>{displayName}</Text>
-                      <Text style={[styles.leaveDate, { color: palette.primary }]}>
-                        {formatDateShort(item.leave_date)}
-                      </Text>
-                      {item.reason ? (
-                        <Text style={[styles.leaveReason, { color: palette.muted }]}>{item.reason}</Text>
-                      ) : null}
-                    </View>
-                    <PressableScale
-                      accessibilityLabel={`Delete leave for ${displayName}`}
-                      accessibilityRole="button"
-                      disabled={isOffline}
-                      onPress={() => handleDelete(item)}
-                      style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
-                    >
-                      <Icon color={colors.danger} name="trash" size={16} />
-                    </PressableScale>
+                  <View style={adminStyles.rowMain}>
+                    <Text style={[adminStyles.rowTitle, { color: palette.foreground }]}>{displayName}</Text>
+                    <Text style={[adminStyles.rowMeta, adminStyles.numeral, { color: palette.leave }]}>
+                      {formatDateShort(item.leave_date)}
+                    </Text>
+                    {item.reason ? (
+                      <Text style={[adminStyles.rowMeta, { color: palette.muted }]}>{item.reason}</Text>
+                    ) : null}
                   </View>
+                  <PressableScale
+                    accessibilityLabel={`Delete leave for ${displayName}`}
+                    accessibilityRole="button"
+                    disabled={isOffline}
+                    onPress={() => handleDelete(item)}
+                    style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+                  >
+                    <Icon color={palette.error} name="trash" size={18} />
+                  </PressableScale>
                 </View>
               );
             }}
@@ -282,81 +269,72 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
         )}
       </View>
 
-      {/* Record Leave Modal */}
       <Modal animationType="slide" transparent visible={createModalVisible} onRequestClose={() => setCreateModalVisible(false)}>
-        <View style={[styles.modalOverlay, bounds]}>
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>Record Member Leave</Text>
-            {modalError ? <Text style={styles.modalError}>{modalError}</Text> : null}
+        <View style={[adminStyles.modalOverlay, bounds]}>
+          <ScrollView
+            contentContainerStyle={[adminStyles.modalCard, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
+            keyboardShouldPersistTaps="handled"
+            style={adminStyles.modalScroll}
+          >
+            <Text style={[adminStyles.modalTitle, { color: palette.foreground }]}>Record member leave</Text>
+            {modalError ? <Text style={[adminStyles.modalError, { color: palette.error }]}>{modalError}</Text> : null}
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Select Member *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-              {users.map((u) => (
-                <PressableScale
-                  key={u.id}
-                  accessibilityLabel={`Pick member ${u.name || u.email}`}
-                  accessibilityRole="button"
-                  onPress={() => setSelectedUserId(u.id)}
-                  style={[
-                    styles.pickerPill,
-                    {
-                      backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
-                      borderColor: selectedUserId === u.id ? palette.primary : palette.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.pickerPillText,
-                      { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground },
-                    ]}
-                  >
-                    {u.name || u.email}
-                  </Text>
-                </PressableScale>
-              ))}
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Member</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={adminStyles.chipRow}>
+                {users.map((u) => (
+                  <Chip
+                    key={u.id}
+                    accessibilityLabel={`Pick member ${u.name || u.email}`}
+                    active={selectedUserId === u.id}
+                    label={u.name || u.email}
+                    onPress={() => setSelectedUserId(u.id)}
+                    palette={palette}
+                  />
+                ))}
+              </View>
             </ScrollView>
 
-            <Text style={[styles.inputLabel, { color: palette.foreground, marginTop: spacing.sm }]}>Date * (YYYY-MM-DD)</Text>
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Date (YYYY-MM-DD)</Text>
             <TextInput
               accessibilityLabel="Leave Date"
               onChangeText={setLeaveDate}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              style={[adminStyles.input, adminStyles.numeral, { borderColor: palette.controlBorder, color: palette.foreground }]}
               value={leaveDate}
             />
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Reason / Notes</Text>
+            <Text style={[adminStyles.label, { color: palette.muted }]}>Reason or notes</Text>
             <TextInput
               accessibilityLabel="Leave Reason"
               onChangeText={setLeaveReason}
               placeholder="e.g. Vacation, Medical Leave"
               placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              style={[adminStyles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
               value={leaveReason}
             />
 
-            <View style={styles.modalActions}>
+            <View style={adminStyles.modalActions}>
               <PressableScale
                 accessibilityLabel="Cancel Leave"
                 accessibilityRole="button"
                 onPress={() => setCreateModalVisible(false)}
-                style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
+                style={[adminStyles.btn, adminStyles.btnOutline, { borderColor: palette.controlBorder }]}
               >
-                <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
+                <Text style={[adminStyles.btnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
               <PressableScale
                 accessibilityLabel="Save Leave"
                 accessibilityRole="button"
                 disabled={submitting}
                 onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
+                style={[adminStyles.btn, { backgroundColor: palette.primary }]}
               >
                 {submitting ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Record</Text>
+                  <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>Record</Text>
                 )}
               </PressableScale>
             </View>
@@ -366,192 +344,3 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  headerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  headerActionText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  errorBannerText: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    flex: 1,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.body,
-    paddingVertical: 0,
-  },
-  listContent: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  userName: {
-    fontSize: typography.body,
-    fontWeight: '700',
-  },
-  leaveDate: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  leaveReason: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  loadingText: {
-    fontSize: typography.caption,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-    gap: spacing.xs,
-  },
-  emptyTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-  },
-  emptySubtitle: {
-    fontSize: typography.caption,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-    width: '100%',
-  },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    ...shadows.md,
-  },
-  modalTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  modalError: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-  },
-  inputLabel: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-    marginBottom: spacing.sm,
-  },
-  pickerScroll: {
-    flexDirection: 'row',
-    marginBottom: spacing.xs,
-  },
-  pickerPill: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    marginRight: spacing.xs,
-  },
-  pickerPillText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexWrap: 'wrap',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  modalBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-});

@@ -92,3 +92,20 @@ export function formatDateRangeShort(fromISO: string, toISO: string): string {
   const year = new Date(toISO + 'T12:00:00').getFullYear();
   return `${short(fromISO)} – ${short(toISO)}, ${year}`;
 }
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * "Tuesday 20 October": the day line at the top of Home. Built from the ISO
+ * parts, not Intl, so it reads the same on every device locale. Echoes its
+ * input when it is not a valid ISO date.
+ */
+export function formatDayLine(isoDate: string): string {
+  if (!isValidISODate(isoDate)) return isoDate;
+  const d = new Date(isoDate + 'T12:00:00Z');
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`;
+}

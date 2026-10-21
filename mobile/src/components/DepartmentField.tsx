@@ -51,7 +51,7 @@ export function DepartmentField({ value, onChange, listDepartments, palette, acc
         accessibilityLabel={`${accessibilityLabel}: ${value || 'None'}`}
         accessibilityRole="button"
         onPress={() => (error ? load() : setOpen(true))}
-        style={[styles.field, { backgroundColor: palette.background, borderColor: palette.border }]}
+        style={[styles.field, { borderColor: palette.controlBorder }]}
       >
         <Text style={{ color: value ? palette.foreground : palette.placeholder, fontSize: typography.body }}>
           {value || 'None'}
@@ -79,7 +79,7 @@ export function DepartmentField({ value, onChange, listDepartments, palette, acc
 const styles = StyleSheet.create({
   field: {
     borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     paddingHorizontal: spacing.md,
     minHeight: 44,
     justifyContent: 'center',

@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { holidaysInYear } from '@vsis/core';
 import type { LeaveRow, TimesheetListParams, TimesheetListResult } from '../api/contracts';
-import { borderRadius, spacing, typography, useTheme } from '../theme';
+import { borderRadius, fonts, spacing, typography, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 
 // ponytail: one 1000-row page (the server maximum) covers a user's month; a
@@ -108,17 +108,17 @@ export function MissingDaysStrip({ userId, today, refreshKey, listTimesheets, li
 
   const look: Record<DayState, { bg?: string; fg: string; border?: string; bold?: boolean; dim?: boolean }> = {
     holiday: { bg: palette.primary, fg: palette.onPrimary, bold: true },
-    leave: { bg: palette.infoBoxBg, fg: palette.info },
-    logged: { bg: palette.successBoxBg, fg: palette.successText },
+    leave: { bg: palette.leaveTint, fg: palette.leave },
+    logged: { bg: palette.loggedTint, fg: palette.loggedText },
     weekend: { fg: palette.muted, dim: true },
     future: { fg: palette.muted },
-    missing: { bg: palette.errorBoxBg, fg: palette.error, border: palette.error, bold: true },
+    missing: { bg: palette.missingTint, fg: palette.missingText, border: palette.missing, bold: true },
   };
 
   return (
     <View
       accessibilityLabel={`${monthName} logging`}
-      style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+      style={[styles.card, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
     >
       <Text style={[styles.title, { color: palette.foreground }]}>{monthName}</Text>
       <Text accessibilityLiveRegion="polite" style={[styles.summary, { color: palette.muted }]}>{summary}</Text>
@@ -166,11 +166,11 @@ export function MissingDaysStrip({ userId, today, refreshKey, listTimesheets, li
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.sheet,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  title: { fontSize: typography.body, fontWeight: '600' },
+  title: { fontSize: typography.heading, fontWeight: '600' },
   summary: { fontSize: typography.caption, marginTop: 2, marginBottom: spacing.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
   cell: {
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   today: { borderWidth: 2 },
-  bold: { fontWeight: '700' },
-  weekday: { fontSize: 9, lineHeight: 10, opacity: 0.7 },
-  day: { fontSize: 12, fontVariant: ['tabular-nums'] },
+  bold: { fontFamily: fonts.numeral, fontWeight: '600' },
+  weekday: { fontSize: typography.badge, lineHeight: 13, opacity: 0.7 },
+  day: { fontFamily: fonts.numeralMedium, fontSize: 14, fontVariant: ['tabular-nums'] },
 });

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
-import { spacing, useTheme } from '../theme';
+import { useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
 import { formatDatePreview } from '../utils/dates';
@@ -46,7 +46,7 @@ export function EditTimeScreen({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.container, { backgroundColor: palette.background }]}
+      style={[styles.container, { backgroundColor: palette.paper }]}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -58,7 +58,7 @@ export function EditTimeScreen({
           onBack={onBack}
           palette={palette}
           subtitle={`Editing entry on ${formatDatePreview(entry.log_date)}`}
-          title="Edit Time"
+          title="Edit time"
         />
         <TimeEntryForm
           initialValues={{
@@ -79,7 +79,7 @@ export function EditTimeScreen({
           onDirtyChange={onDirtyChange}
           onSubmit={handleSubmit}
           scrollViewRef={scrollRef}
-          submitLabel="Update Timesheet"
+          submitLabel="Save changes"
         />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -88,5 +88,5 @@ export function EditTimeScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  scrollContent: { flexGrow: 1 },
 });

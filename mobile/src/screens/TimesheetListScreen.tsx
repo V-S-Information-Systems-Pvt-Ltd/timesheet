@@ -14,7 +14,7 @@ import {
 import { useSessionActor, useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { BatchUpdateTimesheetItem, PersonProfile, TimesheetEntry } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 
 import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
@@ -64,10 +64,9 @@ interface BatchReport {
 
 const BATCH_ERRORS_SHOWN = 2;
 
-/** Rounds away float noise (7.5 + 0.1 + 0.2) before it reaches a label. */
+/** Rounds away float noise (7.5 + 0.1 + 0.2) before it reaches the screen. */
 function formatDayTotal(hours: number): string {
-  const rounded = Math.round(hours * 100) / 100;
-  return `${rounded} ${rounded === 1 ? 'hr' : 'hrs'}`;
+  return String(Math.round(hours * 100) / 100);
 }
 
 const PAGE_SIZE = 25;
@@ -316,7 +315,7 @@ export function TimesheetListScreen({
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {
       Alert.alert(
-        'Delete Entry',
+        'Delete entry',
         `Are you sure you want to delete the ${entry.hours_worked}h entry on ${formatDatePreview(entry.log_date)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -389,7 +388,7 @@ export function TimesheetListScreen({
     if (selectedIds.size === 0) return;
     const count = selectedIds.size;
     Alert.alert(
-      'Bulk Delete',
+      'Delete selected entries',
       `Are you sure you want to delete ${count} selected ${entryWord(count)}?`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -661,17 +660,24 @@ export function TimesheetListScreen({
       if (item.kind === 'day') {
         return (
           <View
+            accessibilityLabel={`${formatDatePreview(item.date)}, ${formatDayTotal(item.totalHours)} hours`}
             accessibilityRole="header"
-            style={[styles.dayHeader, { borderBottomColor: palette.border }]}
+            style={[styles.dayHeader, { borderBottomColor: palette.hairline }]}
           >
-            <Text style={[styles.dayHeaderDate, { color: palette.foreground }]}>
-              {formatDatePreview(item.date)}
+            <View style={styles.dayHeaderDate}>
+              <Text style={[styles.dayHeaderDateText, { color: palette.foreground }]}>
+                {formatDatePreview(item.date)}
+              </Text>
+              {item.count > 1 ? (
+                <Text style={[styles.dayHeaderCount, { color: palette.muted }]}>
+                  {formatEntryCount(item.count)}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={[styles.dayHeaderTotal, { color: palette.foreground }]}>
+              {formatDayTotal(item.totalHours)}
             </Text>
-            <Text style={[styles.dayHeaderTotal, { color: palette.muted }]}>
-              {`${formatDayTotal(item.totalHours)}${
-                item.count > 1 ? ` • ${formatEntryCount(item.count)}` : ''
-              }`}
-            </Text>
+            <Text style={[styles.dayHeaderUnit, { color: palette.muted }]}>h</Text>
           </View>
         );
       }
@@ -751,7 +757,7 @@ export function TimesheetListScreen({
           onPress={onLogTime}
           style={[styles.logButton, { backgroundColor: palette.primary }]}
         >
-          <Text style={[styles.logButtonText, { color: palette.onPrimary }]}>+ Log</Text>
+          <Text style={[styles.logButtonText, { color: palette.onPrimary }]}>Log time</Text>
         </PressableScale>
       </View>
     );
@@ -768,7 +774,7 @@ export function TimesheetListScreen({
   }, [isLoadingMore, palette.muted, palette.primary]);
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       {/* Header */}
       <ScreenHeader
         backLabel="‹ Dashboard"
@@ -810,7 +816,7 @@ export function TimesheetListScreen({
           accessibilityLabel="Filter by member"
           accessibilityRole="button"
           onPress={openMemberPicker}
-          style={[styles.memberBtn, { backgroundColor: palette.card, borderColor: palette.border }]}
+          style={[styles.memberBtn, { borderColor: palette.controlBorder }]}
         >
           <Icon name="team" size={16} color={palette.primary} />
           <Text style={[styles.memberBtnText, { color: palette.foreground }]}>
@@ -829,13 +835,13 @@ export function TimesheetListScreen({
         />
         <FilterTab
           active={filter === '7days'}
-          label="Past 7 Days"
+          label="Past 7 days"
           onPress={() => setFilter('7days')}
           palette={palette}
         />
         <FilterTab
           active={filter === '30days'}
-          label="Past 30 Days"
+          label="Past 30 days"
           onPress={() => setFilter('30days')}
           palette={palette}
         />
@@ -868,7 +874,7 @@ export function TimesheetListScreen({
 
       {/* Selection Action Toolbar */}
       {isSelectionMode ? (
-        <View style={[styles.selectionToolbar, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <View style={[styles.selectionToolbar, { borderColor: palette.hairline }]}>
           <Pressable
             accessibilityLabel={selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
             accessibilityRole="button"
@@ -876,7 +882,7 @@ export function TimesheetListScreen({
             style={styles.toolbarSelectAll}
           >
             <Text style={[styles.toolbarSelectAllText, { color: palette.primary }]}>
-              {selectedIds.size === entries.length ? 'Deselect All' : 'Select All'}
+              {selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
             </Text>
           </Pressable>
 
@@ -932,11 +938,11 @@ export function TimesheetListScreen({
                   onPress={handleBulkDelete}
                   style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
                 >
-                  <Icon color={selectedIds.size > 0 ? colors.error : palette.muted} name="trash" size={14} />
+                  <Icon color={selectedIds.size > 0 ? palette.error : palette.muted} name="trash" size={14} />
                   <Text
                     style={[
                       styles.toolbarBtnText,
-                      { color: selectedIds.size > 0 ? colors.error : palette.muted },
+                      { color: selectedIds.size > 0 ? palette.error : palette.muted },
                     ]}
                   >
                     Delete ({selectedIds.size})
@@ -950,7 +956,7 @@ export function TimesheetListScreen({
 
       {error && entries.length > 0 ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: palette.error }]}>{error}</Text>
         </View>
       ) : null}
 
@@ -1019,6 +1025,7 @@ export function TimesheetListScreen({
       {isLoading ? (
         <LoadingState message="Loading entries..." palette={palette} />
       ) : (
+        <View style={[styles.sheet, { backgroundColor: palette.sheet }]}>
         <FlatList
           contentContainerStyle={styles.listContent}
           data={listRows}
@@ -1040,12 +1047,12 @@ export function TimesheetListScreen({
                   onPress={handleRetry}
                   style={[styles.retryButton, { backgroundColor: palette.primary }]}
                 >
-                  <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try Again</Text>
+                  <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try again</Text>
                 </PressableScale>
               </View>
             ) : (
               <EmptyState
-                actionLabel="+ Log Time"
+                actionLabel="Log time"
                 icon="clock"
                 message="No timesheet entries found."
                 onAction={onLogTime}
@@ -1070,6 +1077,7 @@ export function TimesheetListScreen({
           renderItem={renderRow}
           windowSize={5}
         />
+        </View>
       )}
 
       <BulkEditModal
@@ -1186,14 +1194,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   logButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     minHeight: 36,
     justifyContent: 'center',
-    ...shadows.sm,
   },
-  logButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  logButtonText: { fontSize: typography.caption, fontWeight: '600' },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1208,7 +1215,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
   },
   memberBtnText: { flex: 1, fontSize: typography.caption, fontWeight: '600' },
@@ -1220,9 +1227,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    ...shadows.sm,
+    borderBottomWidth: 1,
   },
   toolbarSelectAll: {
     paddingVertical: spacing.xs,
@@ -1262,22 +1267,36 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  // Day subtotal: date on the left, the day's hours as a numeral on the right.
   dayHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.xs,
+    alignItems: 'baseline',
+    gap: spacing.xs,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dayHeaderDate: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+  },
+  dayHeaderDateText: {
+    fontSize: typography.body,
+    fontWeight: '600',
+  },
+  dayHeaderCount: {
     fontSize: typography.caption,
-    fontWeight: '700',
   },
   dayHeaderTotal: {
-    fontSize: typography.badge,
-    fontWeight: '700',
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.sm,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  dayHeaderUnit: {
+    fontSize: typography.caption,
   },
   rangeSummary: {
     flexDirection: 'row',
@@ -1287,7 +1306,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
   },
   rangeSummaryText: {
@@ -1346,13 +1365,20 @@ const styles = StyleSheet.create({
   loadErrorTitle: { fontSize: typography.body, fontWeight: '700' },
   loadErrorText: { fontSize: typography.caption, textAlign: 'center' },
   retryButton: {
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.control,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    ...shadows.sm,
   },
-  retryButtonText: { fontSize: typography.caption, fontWeight: '700' },
+  retryButtonText: { fontSize: typography.caption, fontWeight: '600' },
+  // The list sits on a white sheet under the paper header area.
+  sheet: {
+    flex: 1,
+    marginTop: spacing.sm,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
+  },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   footerLoader: {
     paddingVertical: spacing.lg,

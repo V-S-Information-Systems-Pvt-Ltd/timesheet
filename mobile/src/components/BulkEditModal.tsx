@@ -19,6 +19,7 @@ import {
 import { useSessionReference } from '../auth/SessionProvider';
 import type { BatchUpdateTimesheetItem, TimesheetEntry } from '../api/contracts';
 import { spacing, typography, borderRadius, type Palette } from '../theme';
+import { Chip } from './Chip';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { WindowsModal } from './WindowsModalHost';
@@ -190,7 +191,7 @@ export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit,
         accessibilityRole="button"
         disabled={isLoading}
         onPress={onPress}
-        style={[styles.select, { backgroundColor: palette.background, borderColor: palette.border }]}
+        style={[styles.select, { backgroundColor: palette.background, borderColor: palette.controlBorder }]}
       >
         <Text style={[styles.selectText, { color: value ? palette.foreground : palette.muted }]}>
           {value || 'Keep existing'}
@@ -210,27 +211,14 @@ export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit,
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={palette.placeholder}
-        style={[styles.input, { backgroundColor: palette.background, color: palette.foreground, borderColor: palette.border }]}
+        style={[styles.input, { backgroundColor: palette.background, color: palette.foreground, borderColor: palette.controlBorder }]}
         value={value}
       />
     </View>
   );
 
   const chip = (key: string, label: string, active: boolean, onPress: () => void) => (
-    <PressableScale
-      key={key}
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      disabled={isLoading}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        { backgroundColor: active ? palette.primary : palette.background, borderColor: active ? palette.primary : palette.border },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: active ? palette.onPrimary : palette.foreground }]}>{label}</Text>
-    </PressableScale>
+    <Chip key={key} active={active} disabled={isLoading} label={label} onPress={onPress} palette={palette} />
   );
 
   return (
@@ -244,9 +232,9 @@ export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit,
         <SafeAreaView style={styles.safeContainer}>
           <View
             accessibilityViewIsModal
-            style={[styles.dialog, { backgroundColor: palette.card, borderColor: palette.border }]}
+            style={[styles.dialog, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
           >
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
+            <View style={[styles.header, { borderBottomColor: palette.hairline }]}>
               <Text style={[styles.title, { color: palette.foreground }]}>Edit Entries</Text>
               <Text style={[styles.subtitle, { color: palette.muted }]}>
                 {`${entries.length} ${entryWord(entries.length)} selected. Only the fields you change are applied.`}
@@ -314,13 +302,13 @@ export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit,
               ) : null}
             </ScrollView>
 
-            <View style={[styles.footer, { borderTopColor: palette.border }]}>
+            <View style={[styles.footer, { borderTopColor: palette.hairline }]}>
               <PressableScale
                 accessibilityLabel="Cancel bulk edit"
                 accessibilityRole="button"
                 disabled={isLoading}
                 onPress={onCancel}
-                style={[styles.cancelBtn, { borderColor: palette.border }]}
+                style={[styles.cancelBtn, { borderColor: palette.controlBorder }]}
               >
                 <Text style={[styles.cancelText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
@@ -376,7 +364,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   safeContainer: { width: '100%', maxWidth: 480, maxHeight: '100%', justifyContent: 'center' },
-  dialog: { maxHeight: '100%', borderRadius: borderRadius.lg, borderWidth: 1, overflow: 'hidden' },
+  dialog: { maxHeight: '100%', borderRadius: borderRadius.sheet, borderWidth: 1, overflow: 'hidden' },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   title: { fontSize: typography.heading, fontWeight: '700' },
   subtitle: { fontSize: typography.caption, marginTop: 2 },
@@ -386,23 +374,21 @@ const styles = StyleSheet.create({
   fieldGroup: { marginBottom: spacing.md },
   label: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
   chipLabel: { marginTop: spacing.md },
-  select: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.md, borderWidth: 1 },
+  select: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.control, borderWidth: 1 },
   selectText: { fontSize: typography.body },
   input: {
     minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
     fontSize: typography.body,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  chip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.md, borderWidth: 1 },
-  chipText: { fontSize: typography.caption, fontWeight: '600' },
   error: { fontSize: typography.caption, marginTop: spacing.xs },
   footer: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth },
-  cancelBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: borderRadius.md, borderWidth: 1 },
+  cancelBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: borderRadius.control, borderWidth: 1 },
   cancelText: { fontSize: typography.body, fontWeight: '600' },
-  saveBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: borderRadius.md },
+  saveBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: borderRadius.control },
   saveText: { fontSize: typography.body, fontWeight: '700' },
 });

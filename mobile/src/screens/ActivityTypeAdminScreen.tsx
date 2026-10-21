@@ -12,10 +12,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { spacing, typography, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/EmptyState';
+import { adminStyles } from '../components/adminStyles';
 import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { ActivityTypeAdminItem } from '../api/contracts';
@@ -184,7 +186,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
         return;
       }
       Alert.alert(
-        'Delete Activity Type',
+        'Delete activity type',
         `Are you sure you want to delete "${activity.name}"? Existing entries will have their activity set to unclassified.`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -214,56 +216,49 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
       return (
         <View
           accessibilityLabel={`Activity Type: ${item.name}`}
-          style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+          style={[adminStyles.row, { borderBottomColor: palette.hairline }]}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardInfo}>
-              <Text style={[styles.activityName, { color: palette.foreground }]}>{item.name}</Text>
-              <View style={styles.metaRow}>
-                <View
-                  style={[
-                    styles.badge,
-                    {
-                      backgroundColor: isActive ? palette.successBoxBg : palette.badgeBg,
-                      borderColor: isActive ? palette.success : palette.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.badgeText, { color: isActive ? palette.successText : palette.muted }]}>
-                    {isActive ? 'ACTIVE' : 'INACTIVE'}
-                  </Text>
-                </View>
-              </View>
+          <View style={adminStyles.rowMain}>
+            <Text style={[adminStyles.rowTitle, { color: palette.foreground }]}>{item.name}</Text>
+            <View
+              style={[
+                adminStyles.pill,
+                { backgroundColor: isActive ? palette.loggedTint : palette.missingTint, marginTop: spacing.xs },
+              ]}
+            >
+              <Text style={[adminStyles.pillText, { color: isActive ? palette.loggedText : palette.missingText }]}>
+                {isActive ? 'Active' : 'Inactive'}
+              </Text>
             </View>
-            <View style={styles.cardActions}>
-              <PressableScale
-                accessibilityLabel={`${isActive ? 'Deactivate' : 'Activate'} ${item.name}`}
-                accessibilityRole="button"
-                disabled={isOffline}
-                onPress={() => handleToggleActive(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
-              >
-                <Icon color={isActive ? palette.success : palette.muted} name="check" size={16} />
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel={`Edit ${item.name}`}
-                accessibilityRole="button"
-                disabled={isOffline}
-                onPress={() => handleOpenEdit(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
-              >
-                <Icon color={palette.primary} name="edit" size={16} />
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel={`Delete ${item.name}`}
-                accessibilityRole="button"
-                disabled={isOffline}
-                onPress={() => handleDelete(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
-              >
-                <Icon color={colors.danger} name="trash" size={16} />
-              </PressableScale>
-            </View>
+          </View>
+          <View style={adminStyles.rowActions}>
+            <PressableScale
+              accessibilityLabel={`${isActive ? 'Deactivate' : 'Activate'} ${item.name}`}
+              accessibilityRole="button"
+              disabled={isOffline}
+              onPress={() => handleToggleActive(item)}
+              style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+            >
+              <Icon color={isActive ? palette.loggedText : palette.muted} name="check" size={18} />
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel={`Edit ${item.name}`}
+              accessibilityRole="button"
+              disabled={isOffline}
+              onPress={() => handleOpenEdit(item)}
+              style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+            >
+              <Icon color={palette.primary} name="edit" size={18} />
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel={`Delete ${item.name}`}
+              accessibilityRole="button"
+              disabled={isOffline}
+              onPress={() => handleDelete(item)}
+              style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
+            >
+              <Icon color={palette.error} name="trash" size={18} />
+            </PressableScale>
           </View>
         </View>
       );
@@ -271,8 +266,84 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
     [handleDelete, handleOpenEdit, handleToggleActive, isOffline, palette]
   );
 
+  const renderModal = (cfg: {
+    visible: boolean;
+    onClose: () => void;
+    title: string;
+    error: string | null;
+    nameLabel: string;
+    name: string;
+    setName: (v: string) => void;
+    activeToggle?: { value: boolean; onChange: (v: boolean) => void };
+    cancelLabel: string;
+    submitLabel: string;
+    submitText: string;
+    submitting: boolean;
+    onSubmit: () => void;
+  }) => (
+    <Modal animationType="slide" transparent visible={cfg.visible} onRequestClose={cfg.onClose}>
+      <View style={[adminStyles.modalOverlay, bounds]}>
+        <ScrollView
+          contentContainerStyle={[adminStyles.modalCard, { backgroundColor: palette.sheet, borderColor: palette.hairline }]}
+          keyboardShouldPersistTaps="handled"
+          style={adminStyles.modalScroll}
+        >
+          <Text style={[adminStyles.modalTitle, { color: palette.foreground }]}>{cfg.title}</Text>
+          {cfg.error ? <Text style={[adminStyles.modalError, { color: palette.error }]}>{cfg.error}</Text> : null}
+
+          <Text style={[adminStyles.label, { color: palette.muted }]}>Activity name</Text>
+          <TextInput
+            accessibilityLabel={cfg.nameLabel}
+            onChangeText={cfg.setName}
+            placeholder="e.g. Code Review"
+            placeholderTextColor={palette.placeholder}
+            style={[adminStyles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
+            value={cfg.name}
+          />
+
+          {cfg.activeToggle ? (
+            <View style={styles.switchRow}>
+              <Text style={[styles.switchLabel, { color: palette.foreground }]}>Active</Text>
+              <Switch
+                accessibilityLabel="Toggle Active Status"
+                onValueChange={cfg.activeToggle.onChange}
+                thumbColor={cfg.activeToggle.value ? palette.primary : palette.sheet}
+                trackColor={{ false: palette.controlBorder, true: palette.primaryLight }}
+                value={cfg.activeToggle.value}
+              />
+            </View>
+          ) : null}
+
+          <View style={adminStyles.modalActions}>
+            <PressableScale
+              accessibilityLabel={cfg.cancelLabel}
+              accessibilityRole="button"
+              onPress={cfg.onClose}
+              style={[adminStyles.btn, adminStyles.btnOutline, { borderColor: palette.controlBorder }]}
+            >
+              <Text style={[adminStyles.btnText, { color: palette.foreground }]}>Cancel</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel={cfg.submitLabel}
+              accessibilityRole="button"
+              disabled={cfg.submitting}
+              onPress={cfg.onSubmit}
+              style={[adminStyles.btn, { backgroundColor: palette.primary }]}
+            >
+              {cfg.submitting ? (
+                <ActivityIndicator color={palette.onPrimary} size="small" />
+              ) : (
+                <Text style={[adminStyles.btnText, { color: palette.onPrimary }]}>{cfg.submitText}</Text>
+              )}
+            </PressableScale>
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[adminStyles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
@@ -282,71 +353,47 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
+            style={[adminStyles.headerAction, isOffline && adminStyles.disabled, { backgroundColor: palette.primary }]}
           >
-            <Icon color={palette.onPrimary} name="plus" size={16} />
-            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New</Text>
+            <Text style={[adminStyles.headerActionText, { color: palette.onPrimary }]}>New activity type</Text>
           </PressableScale>
         }
         subtitle="Manage loggable activity categories"
-        title="Activity Types"
+        title="Activity types"
       />
 
-      <View style={styles.content}>
-        {/* Error Banner */}
+      <View style={[adminStyles.sheet, { backgroundColor: palette.sheet }]}>
         {errorMessage ? (
-          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
-            <Icon color={colors.danger} name="alert-circle" size={18} />
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
+          <View accessibilityRole="alert" style={[adminStyles.errorBanner, { backgroundColor: palette.errorBoxBg }]}>
+            <Text style={[adminStyles.errorBannerText, { color: palette.error }]}>{errorMessage}</Text>
           </View>
         ) : null}
 
-        {/* Search Bar */}
-        <View
-          style={[
-            styles.searchContainer,
-            { backgroundColor: palette.card, borderColor: palette.border },
-          ]}
-        >
-          <Icon color={palette.muted} name="search" size={18} />
-          <TextInput
-            accessibilityLabel="Search activity types"
-            onChangeText={setSearch}
-            placeholder="Search activity types…"
-            placeholderTextColor={palette.placeholder}
-            style={[styles.searchInput, { color: palette.foreground }]}
-            value={search}
-          />
-          {search ? (
-            <PressableScale
-              accessibilityLabel="Clear search"
-              accessibilityRole="button"
-              onPress={() => setSearch('')}
-            >
-              <Icon color={palette.muted} name="close" size={16} />
-            </PressableScale>
-          ) : null}
-        </View>
+        <TextInput
+          accessibilityLabel="Search activity types"
+          onChangeText={setSearch}
+          placeholder="Search activity types"
+          placeholderTextColor={palette.placeholder}
+          style={[adminStyles.searchInput, { borderColor: palette.controlBorder, color: palette.foreground }]}
+          value={search}
+        />
 
-        {/* Activity List */}
         {loading && !refreshing ? (
-          <View style={styles.centerContainer}>
+          <View style={adminStyles.centered}>
             <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading activity types…</Text>
+            <Text style={[adminStyles.muted, { color: palette.muted }]}>Loading activity types…</Text>
           </View>
         ) : (
           <FlatList
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={adminStyles.listContent}
             data={filteredActivities}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Icon color={palette.muted} name="tag" size={40} />
-                <Text style={[styles.emptyTitle, { color: palette.foreground }]}>No activity types found</Text>
-                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-                  {search ? 'Try a different search query.' : 'Create your first activity type using the + button.'}
-                </Text>
-              </View>
+              <EmptyState
+                icon="tag"
+                message={search ? 'No activity types match that search. Try a different name.' : 'No activity types yet. Add the first one with New activity type.'}
+                palette={palette}
+              />
             }
             refreshControl={
               <RefreshControl
@@ -362,303 +409,46 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
         )}
       </View>
 
-      {/* Create Activity Type Modal */}
-      <Modal animationType="slide" transparent visible={createModalVisible} onRequestClose={() => setCreateModalVisible(false)}>
-        <View style={[styles.modalOverlay, bounds]}>
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>New Activity Type</Text>
-            {createError ? <Text style={styles.modalError}>{createError}</Text> : null}
-
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Activity Name *</Text>
-            <TextInput
-              accessibilityLabel="Activity Type Name"
-              onChangeText={setCreateName}
-              placeholder="e.g. Code Review"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={createName}
-            />
-
-            <View style={styles.modalActions}>
-              <PressableScale
-                accessibilityLabel="Cancel"
-                accessibilityRole="button"
-                onPress={() => setCreateModalVisible(false)}
-                style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
-              >
-                <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel="Save Activity Type"
-                accessibilityRole="button"
-                disabled={createSubmitting}
-                onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
-              >
-                {createSubmitting ? (
-                  <ActivityIndicator color={palette.onPrimary} size="small" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Create</Text>
-                )}
-              </PressableScale>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Edit Activity Type Modal */}
-      <Modal animationType="slide" transparent visible={editModalVisible} onRequestClose={() => setEditModalVisible(false)}>
-        <View style={[styles.modalOverlay, bounds]}>
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>Edit Activity Type</Text>
-            {editError ? <Text style={styles.modalError}>{editError}</Text> : null}
-
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Activity Name *</Text>
-            <TextInput
-              accessibilityLabel="Edit Activity Type Name"
-              onChangeText={setEditName}
-              placeholder="e.g. Code Review"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={editName}
-            />
-
-            <View style={styles.switchRow}>
-              <Text style={[styles.switchLabel, { color: palette.foreground }]}>Active Status</Text>
-              <Switch
-                accessibilityLabel="Toggle Active Status"
-                onValueChange={setEditIsActive}
-                thumbColor={editIsActive ? palette.primary : '#ccc'}
-                trackColor={{ false: '#767577', true: palette.badgeBg }}
-                value={editIsActive}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <PressableScale
-                accessibilityLabel="Cancel Edit"
-                accessibilityRole="button"
-                onPress={() => setEditModalVisible(false)}
-                style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
-              >
-                <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel="Update Activity Type"
-                accessibilityRole="button"
-                disabled={editSubmitting}
-                onPress={handleEditSubmit}
-                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
-              >
-                {editSubmitting ? (
-                  <ActivityIndicator color={palette.onPrimary} size="small" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Save</Text>
-                )}
-              </PressableScale>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+      {renderModal({
+        visible: createModalVisible,
+        onClose: () => setCreateModalVisible(false),
+        title: 'New activity type',
+        error: createError,
+        nameLabel: 'Activity Type Name',
+        name: createName,
+        setName: setCreateName,
+        cancelLabel: 'Cancel',
+        submitLabel: 'Save Activity Type',
+        submitText: 'Create',
+        submitting: createSubmitting,
+        onSubmit: handleCreateSubmit,
+      })}
+      {renderModal({
+        visible: editModalVisible,
+        onClose: () => setEditModalVisible(false),
+        title: 'Edit activity type',
+        error: editError,
+        nameLabel: 'Edit Activity Type Name',
+        name: editName,
+        setName: setEditName,
+        activeToggle: { value: editIsActive, onChange: setEditIsActive },
+        cancelLabel: 'Cancel Edit',
+        submitLabel: 'Update Activity Type',
+        submitText: 'Save',
+        submitting: editSubmitting,
+        onSubmit: handleEditSubmit,
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  headerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  headerActionText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  errorBannerText: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    flex: 1,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.body,
-    paddingVertical: 0,
-  },
-  listContent: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  activityName: {
-    fontSize: typography.body,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    flexWrap: 'wrap',
-    marginTop: 2,
-  },
-  badge: {
-    borderWidth: 1,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  loadingText: {
-    fontSize: typography.caption,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-    gap: spacing.xs,
-  },
-  emptyTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-  },
-  emptySubtitle: {
-    fontSize: typography.caption,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-    width: '100%',
-  },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    ...shadows.md,
-  },
-  modalTitle: {
-    fontSize: typography.title,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  modalError: {
-    color: colors.danger,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-  },
-  inputLabel: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    marginBottom: 4,
-    marginTop: spacing.xs,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-    marginBottom: spacing.sm,
-  },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginVertical: spacing.sm,
-  },
-  switchLabel: {
-    fontSize: typography.body,
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexWrap: 'wrap',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
+    minHeight: 44,
     marginTop: spacing.md,
   },
-  modalBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
+  switchLabel: { fontSize: typography.body, fontWeight: '600' },
 });
