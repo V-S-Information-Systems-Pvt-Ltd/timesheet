@@ -1,5 +1,12 @@
 # Architecture Delta
 
+## 2026-10-23 — Admin password reset
+
+- New `POST /api/v1/admin/users/[id]/password-reset` (cookie or bearer, `Cache-Control: no-store`), body `{ mode: 'email' | 'generate' }`. `email` sends the standard reset link (502 `EMAIL_FAILED` if delivery fails); `generate` sets a random 16-character password and returns it once.
+- Gate: admin only, `canManageUser` (department-limited admins reach only in-scope PM/User accounts), super-admin account only by the super-admin, never the actor's own account. Audited as `user.password_reset_email` / `user.password_generated`.
+- `setPasswordByAdmin` in `lib/db/password-recovery.ts` shares `replacePassword` with reset-link consumption: bumps `session_version`, revokes mobile sessions, voids open reset links. Does not mark the email verified.
+- UI: Password section in the Users editor (`app/dashboard/user-whitelist.tsx`). No forced change on next sign-in.
+
 ## 2026-10-20 — Backfill helpers in @vsis/core; mobile department and backfill-window reads
 
 - `firstOfMonthISO`, `minLogDateISO`, `backfillMinDate`, `isWithinBackfillWindow` moved from `lib/validation.ts` to `packages/core/src/backfill.ts` (structural `BackfillWindow` type; core stays free of `@vsis/contracts`). `lib/validation.ts` re-exports them; web behaviour is unchanged.
