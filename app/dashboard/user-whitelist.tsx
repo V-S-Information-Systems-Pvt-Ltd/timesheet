@@ -429,6 +429,100 @@ function UserEditor({
             )}
           </fieldset>
         )}
+
+        {!isSelf && <PasswordReset user={user} />}
     </EditorForm>
+  )
+}
+
+/** Admin password reset: email a reset link, or generate a password to hand over. */
+function PasswordReset({ user }: { user: User }) {
+  const [busy, setBusy] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [generated, setGenerated] = useState<string | null>(null)
+  const who = user.name || user.email
+
+  const sendEmail = async () => {
+    setBusy(true)
+    const { data, error } = await dataClient.resetUserPassword(user.id, 'email')
+    setBusy(false)
+    if (error || data?.mode !== 'email') toast(error ?? 'Could not send the reset email.', 'error')
+    else toast(`Password reset link sent to ${data.email}.`, 'success')
+  }
+
+  const generate = async () => {
+    setBusy(true)
+    const { data, error } = await dataClient.resetUserPassword(user.id, 'generate')
+    setBusy(false)
+    if (error || data?.mode !== 'generate') {
+      toast(error ?? 'Could not generate a password.', 'error')
+      setConfirming(false)
+      return
+    }
+    setGenerated(data.password)
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(generated ?? '')
+      toast('Password copied.', 'success')
+    } catch {
+      toast('Could not copy. Select the password and copy it manually.', 'error')
+    }
+  }
+
+  const close = () => { if (!busy) { setConfirming(false); setGenerated(null) } }
+
+  return (
+    <EditorSection title="Password" note="Send a reset link, or set a new password and give it to them yourself.">
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void sendEmail()}>
+          Email reset link
+        </Button>
+        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+          Generate new password
+        </Button>
+      </div>
+
+      {confirming && (
+        <Dialog
+          open
+          onClose={close}
+          labelledBy="password-dialog-title"
+          describedBy="password-dialog-desc"
+          className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-card"
+        >
+          <h3 id="password-dialog-title" className="text-lg font-semibold text-fg">
+            {generated ? `New password for ${who}` : `Generate a new password for ${who}?`}
+          </h3>
+          {generated ? (
+            <>
+              <p id="password-dialog-desc" className="mt-1 text-sm text-fg-muted">
+                Give this to {who}. It is shown only once; they can change it after signing in.
+              </p>
+              <output aria-label="Generated password" className="mt-4 block select-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-base tracking-wide text-fg">
+                {generated}
+              </output>
+              <div className="mt-4 flex gap-2">
+                <Button type="button" className="flex-1" onClick={() => void copy()}>Copy password</Button>
+                <Button type="button" variant="ghost" className="flex-1" onClick={close}>Done</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p id="password-dialog-desc" className="mt-1 text-sm text-fg-muted">
+                Their current password stops working and they are signed out on every device.
+              </p>
+              <div className="mt-4 flex gap-2">
+                <Button type="button" variant="danger" className="flex-1" disabled={busy} onClick={() => void generate()}>
+                  {busy ? 'Generating…' : 'Generate password'}
+                </Button>
+                <Button type="button" variant="ghost" className="flex-1" disabled={busy} onClick={close}>Cancel</Button>
+              </div>
+            </>
+          )}
+        </Dialog>
+      )}
+    </EditorSection>
   )
 }

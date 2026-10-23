@@ -265,3 +265,6 @@ export interface TitleRecord {
   created_at: string
 }
 
+
+/** Admin password reset outcome; a generated password is shown to the admin once. */
+export type AdminPasswordResetResult = { mode: 'email'; email: string } | { mode: 'generate'; password: string }
