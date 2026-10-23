@@ -332,6 +332,7 @@ describe('versioned browser routes use explicit cookie opt-in', () => {
       join('admin', 'users', 'route.ts'),
       join('admin', 'users', '[id]', 'route.ts'),
       join('admin', 'users', '[id]', 'department-scope', 'route.ts'),
+      join('admin', 'users', '[id]', 'password-reset', 'route.ts'),
       join('admin', 'users', '[id]', 'timesheets', 'route.ts'),
       join('capabilities', 'route.ts'),
       join('departments', 'route.ts'),

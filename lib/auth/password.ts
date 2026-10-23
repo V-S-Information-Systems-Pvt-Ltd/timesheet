@@ -8,7 +8,8 @@
 // 3. bcrypt: "$2a$10$..." imported from the legacy Supabase backend (verified, then upgraded to scrypt on login)
 
 import { compare as bcryptCompare } from 'bcryptjs'
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { validatePasswordPolicy } from '@/lib/password-policy'
 
 export const SCRYPT_DEFAULTS = {
   N: 16384,
@@ -176,4 +177,15 @@ const DUMMY_HASH =
 export async function verifyDummyPassword(password: string): Promise<boolean> {
   await verifyPassword(password, DUMMY_HASH)
   return false
+}
+
+// No 0/O, 1/l/I: admins read these passwords out to people.
+const GENERATED_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+
+/** Random 16-character password that satisfies the password policy. */
+export function generatePassword(): string {
+  for (;;) {
+    const password = Array.from({ length: 16 }, () => GENERATED_ALPHABET[randomInt(GENERATED_ALPHABET.length)]).join('')
+    if (validatePasswordPolicy(password).ok) return password
+  }
 }

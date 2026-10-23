@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createHash, randomBytes } from 'node:crypto'
+import type { PoolClient } from 'pg'
 import { hashPassword } from '@/lib/auth/password'
 import { markEmailVerified } from './email-verification'
 import { query, transaction } from './pool'
@@ -91,36 +92,57 @@ export async function consumePasswordResetToken(
     const row = rows.rows[0]
     if (!row) return { ok: false }
 
-    const profile = await client.query<{ id: string }>(
-      `update public.profiles
-          set password_hash = $1,
-              session_version = session_version + 1
-        where id = $2
-      returning id`,
-      [passwordHash, row.user_id]
-    )
-    if (!profile.rows[0]) return { ok: false }
+    if (!(await replacePassword(client, row.user_id, passwordHash, now))) return { ok: false }
     // The reset link reached this mailbox, which proves ownership as well as
     // the verification link would.
     await markEmailVerified(client, row.user_id, now)
 
-    await client.query(
-      `update public.password_reset_tokens
-          set used_at = coalesce(used_at, $1)
-        where user_id = $2
-          and used_at is null`,
-      [now.toISOString(), row.user_id]
-    )
-    await client.query(
-      `update public.mobile_sessions
-          set revoked_at = coalesce(revoked_at, $1)
-        where user_id = $2
-          and revoked_at is null`,
-      [now.toISOString(), row.user_id]
-    )
-
     return { ok: true, userId: row.user_id }
   })
+}
+
+/** Admin-set password: same session and reset-link invalidation as a reset. */
+export async function setPasswordByAdmin(
+  userId: string,
+  newPassword: string,
+  now = new Date()
+): Promise<boolean> {
+  const passwordHash = await hashPassword(newPassword)
+  return transaction((client) => replacePassword(client, userId, passwordHash, now))
+}
+
+/** Store the hash, end every web and mobile session, and void open reset links. */
+async function replacePassword(
+  client: PoolClient,
+  userId: string,
+  passwordHash: string,
+  now: Date
+): Promise<boolean> {
+  const profile = await client.query<{ id: string }>(
+    `update public.profiles
+        set password_hash = $1,
+            session_version = session_version + 1
+      where id = $2
+    returning id`,
+    [passwordHash, userId]
+  )
+  if (!profile.rows[0]) return false
+
+  await client.query(
+    `update public.password_reset_tokens
+        set used_at = coalesce(used_at, $1)
+      where user_id = $2
+        and used_at is null`,
+    [now.toISOString(), userId]
+  )
+  await client.query(
+    `update public.mobile_sessions
+        set revoked_at = coalesce(revoked_at, $1)
+      where user_id = $2
+        and revoked_at is null`,
+    [now.toISOString(), userId]
+  )
+  return true
 }
 
 export async function cleanupPasswordResetTokens(now = new Date()): Promise<number> {

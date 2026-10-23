@@ -1,8 +1,14 @@
 import 'server-only'
 
 import type { Actor } from '@/lib/db/types'
-import type { HierarchyRole, PermissionRole, User } from '@/app/types'
-import { isAdminActor } from '@/lib/roles'
+import type { AdminPasswordResetResult, HierarchyRole, PermissionRole, User } from '@/app/types'
+import { isAdminActor, isSuperAdminActor, isSuperAdminEmail } from '@/lib/roles'
+import { safeAudit } from '@/lib/audit'
+import { generatePassword } from '@/lib/auth/password'
+import { canManageUser } from '@/lib/db/native/visibility'
+import { issuePasswordResetToken, setPasswordByAdmin } from '@/lib/db/password-recovery'
+import { sendPasswordResetEmail } from '@/lib/email/password-reset'
+import { extractError, logger } from '@/lib/logger'
 import { peopleDeps } from '@/lib/db/people'
 import {
   createPersonDomain,
@@ -203,4 +209,58 @@ export async function updateAdminUserService(
   }
 
   return { success: true, data: result.data }
+}
+
+
+/**
+ * Admin password reset for another user: email them a reset link, or set a
+ * random password the admin passes on. Either way only managers of the target
+ * (canManageUser) may do it, and only the super-admin may touch that account.
+ */
+export async function adminPasswordResetService(
+  actor: Actor,
+  targetId: string,
+  body: unknown
+): Promise<MobileServiceResult<AdminPasswordResetResult>> {
+  if (!isAdminActor(actor)) {
+    return { success: false, code: 'FORBIDDEN', message: 'Only administrators can reset passwords.', status: 403 }
+  }
+  const mode = isRecord(body) ? body.mode : undefined
+  if (mode !== 'email' && mode !== 'generate') {
+    return { success: false, code: 'VALIDATION_ERROR', message: 'mode must be "email" or "generate".', status: 400 }
+  }
+
+  const target = targetId ? await peopleDeps().persistence.getProfileById(targetId) : null
+  if (!target) return { success: false, code: 'NOT_FOUND', message: 'User not found.', status: 404 }
+  if (target.id === actor.id) {
+    return { success: false, code: 'VALIDATION_ERROR', message: 'Use Change password for your own account.', status: 400 }
+  }
+  if ((isSuperAdminEmail(target.email) && !isSuperAdminActor(actor)) || !(await canManageUser(actor, target.id))) {
+    return { success: false, code: 'FORBIDDEN', message: "You cannot reset this user's password.", status: 403 }
+  }
+
+  if (mode === 'email') {
+    const issued = await issuePasswordResetToken(target.email)
+    if (!issued) return { success: false, code: 'NOT_FOUND', message: 'User not found.', status: 404 }
+    try {
+      await sendPasswordResetEmail({ to: issued.email, token: issued.token, expiresAt: issued.expiresAt })
+    } catch (err) {
+      logger.error('admin password reset email delivery failed', { targetId: target.id, error: extractError(err) })
+      return {
+        success: false,
+        code: 'EMAIL_FAILED',
+        message: 'Could not send the reset email. Generate a password instead.',
+        status: 502,
+      }
+    }
+    await safeAudit(actor, { action: 'user.password_reset_email', targetId: target.id })
+    return { success: true, data: { mode, email: issued.email } }
+  }
+
+  const password = generatePassword()
+  if (!(await setPasswordByAdmin(target.id, password))) {
+    return { success: false, code: 'NOT_FOUND', message: 'User not found.', status: 404 }
+  }
+  await safeAudit(actor, { action: 'user.password_generated', targetId: target.id })
+  return { success: true, data: { mode, password } }
 }

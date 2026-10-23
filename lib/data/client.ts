@@ -13,7 +13,7 @@ import type { BatchUpdateTimesheetItem, BatchUpdateTimesheetsResponse } from '@v
 import type { BrowserCreateUserInput, BrowserUserMutation } from '@vsis/contracts'
 import type { BrowserProfileUpdateInput } from '@vsis/contracts'
 import type { BrowserActivityTypeMutation, BrowserGlobalReminderCreateInput } from '@vsis/contracts'
-import type { ActivityType, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, Department, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
+import type { ActivityType, AdminPasswordResetResult, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, Department, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
 export interface TimesheetQuery {
@@ -152,6 +152,7 @@ export interface DataClient {
   resetDatabase(mode: 'timesheets' | 'activity' | 'all'): Promise<MutationResult>
   deleteUserPermanently(id: string): Promise<MutationResult>
   deleteUserTimesheets(id: string): Promise<MutationResult>
+  resetUserPassword(id: string, mode: 'email' | 'generate'): Promise<{ data: AdminPasswordResetResult | null; error: string | null }>
   importTimesheets(rows: CsvTimesheetRow[]): Promise<TimesheetImportResult>
   exportBackup(): Promise<{ payload: BackupPayload | null; error: string | null }>
   restoreBackup(json: string): Promise<{ created?: BackupCreatedCounts; skipped?: number; error: string | null }>
@@ -745,6 +746,12 @@ export const dataClient: DataClient = {
 
   async deleteUserTimesheets(id) {
     return mutation(`/api/v1/admin/users/${encodeURIComponent(id)}/timesheets`, { method: 'DELETE' })
+  },
+
+  async resetUserPassword(id, mode) {
+    return mutationData<AdminPasswordResetResult>(`/api/v1/admin/users/${encodeURIComponent(id)}/password-reset`, {
+      method: 'POST', body: JSON.stringify({ mode }),
+    })
   },
 
   async importTimesheets(rows) {
