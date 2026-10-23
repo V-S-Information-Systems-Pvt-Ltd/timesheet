@@ -51,8 +51,6 @@
     </AppxManifest>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Fonts\BarlowSemiCondensed-Medium.ttf" />
-    <Content Include="Fonts\BarlowSemiCondensed-SemiBold.ttf" />
     <Content Include="Images\SplashScreen.scale-200.png" />
     <Content Include="Images\LockScreenLogo.scale-200.png" />
     <Content Include="Images\Square150x150Logo.scale-200.png" />
