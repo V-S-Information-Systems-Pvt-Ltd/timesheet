@@ -104,3 +104,33 @@ describe('fonts', () => {
     }
   });
 });
+
+describe('Text contrast (WCAG AA 4.5:1)', () => {
+  const MODES = [false, true] as const;
+  // Default, a yellow and a pale blue (too light on white), and a near-black (too dark on dark cards).
+  const BRANDS = [undefined, '#FFD400', '#9CC9F5', '#0A0A14'];
+
+  it.each(MODES)('keeps primaryText readable on every surface it sits on (dark=%s)', (dark) => {
+    for (const brand of BRANDS) {
+      const p = getPalette(dark, brand);
+      for (const surface of [p.sheet, p.paper, p.primaryLight]) {
+        expect({ brand, surface, ratio: contrast(p.primaryText, surface) >= 4.5 }).toEqual({ brand, surface, ratio: true });
+      }
+    }
+  });
+
+  it('leaves the default light primaryText close to the brand blue', () => {
+    expect(contrast(getPalette(false).primaryText, getPalette(false).primary)).toBeLessThan(1.2);
+  });
+
+  it.each(MODES)('keeps body text pairs readable (dark=%s)', (dark) => {
+    const p = getPalette(dark);
+    const pairs: [string, string][] = [
+      [p.foreground, p.paper], [p.foreground, p.sheet],
+      [p.muted, p.paper], [p.muted, p.sheet],
+      [p.placeholder, p.sheet],
+      [p.loggedText, p.loggedTint], [p.missingText, p.missingTint], [p.leave, p.leaveTint],
+    ];
+    for (const [fg, bg] of pairs) expect(`${fg} on ${bg}: ${contrast(fg, bg) >= 4.5}`).toBe(`${fg} on ${bg}: true`);
+  });
+});

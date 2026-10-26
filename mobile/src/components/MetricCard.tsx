@@ -31,7 +31,7 @@ export const MetricCard = React.memo(function MetricCardComponent({
   const content = (
     <View style={styles.content}>
       <Text style={[styles.label, { color: palette.muted }]}>{label}</Text>
-      <Text style={[styles.value, { color: isPrimary ? palette.primary : palette.foreground }]}>
+      <Text style={[styles.value, { color: isPrimary ? palette.primaryText : palette.foreground }]}>
         {value} <Text style={[styles.unit, { color: palette.muted }]}>{unit}</Text>
       </Text>
       {dateLabel ? (

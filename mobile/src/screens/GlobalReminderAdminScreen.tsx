@@ -239,7 +239,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
                     onPress={() => handleOpenEdit(item)}
                     style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
                   >
-                    <Icon color={palette.primary} name="edit" size={18} />
+                    <Icon color={palette.primaryText} name="edit" size={18} />
                   </PressableScale>
                   <PressableScale
                     accessibilityLabel={`Delete reminder: ${item.message}`}

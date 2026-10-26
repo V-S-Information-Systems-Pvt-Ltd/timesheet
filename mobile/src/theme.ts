@@ -138,6 +138,8 @@ export interface Palette {
   primary: string;
   primaryLight: string;
   primaryDark: string;
+  /** primary clamped to 4.5:1 on sheet, paper and primaryLight; use for text and icons. */
+  primaryText: string;
   onPrimary: string;
   info: string;
   infoLight: string;
@@ -188,6 +190,30 @@ function blendRgb(
   );
 }
 
+function luminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const lin = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Blends fg toward `toward` until it reaches 4.5:1 on every surface (brand colours are arbitrary). */
+function readableOn(fg: string, surfaces: string[], toward: { r: number; g: number; b: number }): string {
+  const rgb = hexToRgb(fg);
+  for (let w = 0; w <= 1; w += 0.02) {
+    const candidate = blendRgb(rgb, toward, w);
+    if (surfaces.every((s) => contrastRatio(candidate, s) >= 4.5)) return candidate;
+  }
+  return blendRgb(rgb, toward, 1);
+}
+
 export function getPalette(isDarkMode: boolean, primaryColor?: string | null): Palette {
   const cleanPrimary =
     primaryColor && /^#[0-9A-Fa-f]{6}$/.test(primaryColor.trim())
@@ -221,6 +247,7 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         primary: cleanPrimary,
         primaryLight: darkTint,
         primaryDark,
+        primaryText: readableOn(cleanPrimary, [colors.darkCard, colors.darkBackground, darkTint], white),
         onPrimary: '#FFFFFF',
         info: colors.info,
         infoLight: '#1B2D52',
@@ -260,6 +287,7 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         primary: cleanPrimary,
         primaryLight: lightTint,
         primaryDark,
+        primaryText: readableOn(cleanPrimary, [colors.sheet, colors.paper, lightTint], black),
         onPrimary: '#FFFFFF',
         info: colors.info,
         infoLight: colors.infoLight,

@@ -50,7 +50,7 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
       <View style={styles.tabRow}>
         {TABS.map((tab) => {
           const isActive = activeScreen === tab.key;
-          const activeColor = palette.primary;
+          const activeColor = palette.primaryText;
           const inactiveColor = palette.muted;
 
           if (tab.isAction) {
@@ -71,6 +71,7 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
                     </PressableScale>
                   </View>
                   <Text
+                    maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE}
                     style={[
                       styles.tabLabel,
                       styles.actionLabel,
@@ -101,6 +102,7 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
                   />
                 </View>
                 <Text
+                  maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE}
                   style={[
                     styles.tabLabel,
                     isActive ? styles.tabLabelActive : styles.tabLabelInactive,
@@ -118,6 +120,9 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
   );
 });
 
+// Labels grow with system text size up to this cap, so the bar never clips or swallows the screen.
+const NAV_LABEL_MAX_SCALE = 1.3;
+
 const styles = StyleSheet.create({
   container: {
     borderTopWidth: 1,
@@ -129,7 +134,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 60,
+    minHeight: 60,
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',

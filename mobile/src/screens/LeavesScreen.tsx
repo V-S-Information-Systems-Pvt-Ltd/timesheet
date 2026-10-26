@@ -257,7 +257,7 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
           onPress={onPick}
           style={styles.iconButton}
         >
-          <Icon color={palette.primary} name="calendar" size={18} />
+          <Icon color={palette.primaryText} name="calendar" size={18} />
         </PressableScale>
       </View>
       {quick}

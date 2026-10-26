@@ -102,7 +102,7 @@ export function SearchablePickerModal({
                 numberOfLines={1}
                 style={[
                   styles.itemName,
-                  { color: isSelected ? palette.primary : palette.foreground },
+                  { color: isSelected ? palette.primaryText : palette.foreground },
                 ]}
               >
                 {item.name}
@@ -112,7 +112,7 @@ export function SearchablePickerModal({
                   <Text
                     style={[
                       styles.itemBadgeText,
-                      { color: isSelected ? palette.onPrimary : palette.primary },
+                      { color: isSelected ? palette.onPrimary : palette.primaryText },
                     ]}
                   >
                     {item.badge}
@@ -127,7 +127,7 @@ export function SearchablePickerModal({
             ) : null}
           </View>
           {isSelected ? (
-            <Text style={[styles.checkmark, { color: palette.primary }]}>✓</Text>
+            <Text style={[styles.checkmark, { color: palette.primaryText }]}>✓</Text>
           ) : null}
         </PressableScale>
       );
@@ -194,7 +194,7 @@ export function SearchablePickerModal({
               onPress={handleClose}
               style={styles.closeButton}
             >
-              <Text style={[styles.closeButtonText, { color: palette.primary }]}>Done</Text>
+              <Text style={[styles.closeButtonText, { color: palette.primaryText }]}>Done</Text>
             </Pressable>
           </View>
 

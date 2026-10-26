@@ -69,7 +69,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   style={[styles.railActionButton, { backgroundColor: palette.primary }]}
                 >
                   <Icon color={palette.onPrimary} name={item.icon} size={20} />
-                  <Text style={[styles.railActionText, { color: palette.onPrimary }]}>{item.label}</Text>
+                  <Text maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE} style={[styles.railActionText, { color: palette.onPrimary }]}>{item.label}</Text>
                 </PressableScale>
               );
             }
@@ -87,14 +87,15 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                 ]}
               >
                 <Icon
-                  color={isActive ? palette.primary : palette.muted}
+                  color={isActive ? palette.primaryText : palette.muted}
                   name={item.icon}
                   size={20}
                 />
                 <Text
+                  maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE}
                   style={[
                     styles.railItemText,
-                    { color: isActive ? palette.primary : palette.muted },
+                    { color: isActive ? palette.primaryText : palette.muted },
                     isActive && styles.railItemTextActive,
                   ]}
                 >
@@ -122,7 +123,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
       <View style={styles.tabRow}>
         {NAV_ITEMS.map((tab) => {
           const isActive = activeTab === tab.key;
-          const activeColor = palette.primary;
+          const activeColor = palette.primaryText;
           const inactiveColor = palette.muted;
 
           if (tab.isAction) {
@@ -139,6 +140,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   <Icon color={palette.onPrimary} name={tab.icon} size={22} />
                 </PressableScale>
                 <Text
+                  maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE}
                   style={[
                     styles.tabLabel,
                     styles.actionLabel,
@@ -173,6 +175,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   />
                 </View>
                 <Text
+                  maxFontSizeMultiplier={NAV_LABEL_MAX_SCALE}
                   style={[
                     styles.tabLabel,
                     isActive ? styles.tabLabelActive : styles.tabLabelInactive,
@@ -190,6 +193,9 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
   );
 });
 
+// Labels grow with system text size up to this cap, so the bar never clips or swallows the screen.
+const NAV_LABEL_MAX_SCALE = 1.3;
+
 const styles = StyleSheet.create({
   bottomContainer: {
     borderTopWidth: 1,
@@ -201,7 +207,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 56,
+    minHeight: 56,
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',

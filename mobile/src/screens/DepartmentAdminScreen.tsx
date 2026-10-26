@@ -156,7 +156,7 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
           onPress={() => openForm(item)}
           style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
         >
-          <Icon color={palette.primary} name="edit" size={18} />
+          <Icon color={palette.primaryText} name="edit" size={18} />
         </PressableScale>
         <PressableScale
           accessibilityLabel={`Delete ${item.name}`}
