@@ -1,7 +1,7 @@
 import { createElement, type ComponentType, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { Input, Select, Td, Th, Checkbox, FileField, DataTable, Menu, AsyncSection, type DataColumn } from '@/app/components/ui'
+import { Field, Input, Select, Td, Th, Checkbox, FileField, DataTable, Menu, AsyncSection, type DataColumn } from '@/app/components/ui'
 
 function classes(html: string): string[] {
   return html.match(/class="([^"]*)"/)?.[1].split(/\s+/) ?? []
@@ -131,5 +131,25 @@ describe('new primitives (P0)', () => {
     expect(failed).toContain('Could not load: Network down')
     expect(failed).toContain('Retry')
     expect(failed).not.toContain('Loaded content')
+  })
+})
+
+describe('Field descriptions', () => {
+  const F = Field as ComponentType<{ label: string; id: string; error?: string; hint?: string; children?: ReactNode }>
+  it('links a control to its error and hint and marks it invalid', () => {
+    const html = renderToStaticMarkup(
+      createElement(F, { label: 'Hours', id: 'hours', error: 'Too many', hint: 'Max 24' }, createElement(Input, { required: true }))
+    )
+    expect(html).toContain('aria-describedby="hours-error hours-hint"')
+    expect(html).toContain('aria-invalid="true"')
+    expect(html).toContain('id="hours-error"')
+    expect(html).toContain('id="hours-hint"')
+    expect(html).toContain('class="field ')
+  })
+
+  it('leaves a valid control without aria-invalid or a dangling describedby', () => {
+    const html = renderToStaticMarkup(createElement(F, { label: 'Hours', id: 'hours' }, createElement(Select)))
+    expect(html).not.toContain('aria-invalid="')
+    expect(html).not.toContain('aria-describedby="')
   })
 })

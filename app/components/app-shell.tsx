@@ -32,6 +32,8 @@ function navigateInPlace(event: MouseEvent<HTMLAnchorElement>, href: string, pat
   if (path !== pathname || pathname !== '/dashboard') return false
   event.preventDefault()
   window.history.pushState(null, '', href)
+  // No page load, so move focus to the new panel; next frame, once a closing drawer stops making main inert.
+  requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }))
   return true
 }
 
@@ -391,8 +393,9 @@ export function AppShell({
 
         <main
           id="main-content"
+          tabIndex={-1}
           className={cn(
-            'flex-1',
+            'flex-1 outline-none',
             centered
               ? 'flex items-center justify-center px-4 py-10'
               : 'w-full px-4 py-6 md:px-8 md:py-8'

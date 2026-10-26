@@ -228,6 +228,13 @@ body {
   }
 }
 
+/* Required marker on a Field label; the empty alt text keeps it out of the
+   accessible name, since the control itself already reports "required". */
+.field:has(:required) > .field-label::after {
+  content: " *" / "";
+  color: var(--danger-text);
+}
+
 /* Consistent, accessible focus rings */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--primary-text);

@@ -13,8 +13,9 @@ import { IconMonitor, IconMoon, IconSun, IconUpload } from './icons'
 import { IconChevronDown } from './icons'
 export { Menu, type MenuItem } from './menu'
 
+// 16px text on phones stops iOS Safari zooming into a focused control.
 export const inputCls =
-  'min-h-11 w-full rounded-control border border-border bg-card px-3 py-2.5 text-sm text-fg placeholder:text-fg-subtle transition-colors hover:border-fg-muted focus:border-primary-text focus:outline-none focus:ring-2 focus:ring-primary-text/25 md:min-h-0'
+  'min-h-11 w-full rounded-control border border-border bg-card px-3 py-2.5 text-base text-fg placeholder:text-fg-subtle transition-colors hover:border-fg-muted focus:border-primary-text focus:outline-none focus:ring-2 focus:ring-primary-text/25 aria-invalid:border-danger-text md:min-h-0 md:text-sm'
 
 // cn joins classes without resolving Tailwind conflicts. Omit the default
 // width when a caller requests one, rather than relying on CSS emission order.
@@ -153,6 +154,13 @@ export function useFieldId(): string | undefined {
   return useContext(FieldIdContext)
 }
 
+const FieldDescriptionContext = createContext<{ 'aria-describedby'?: string; 'aria-invalid'?: true }>({})
+
+/** aria-describedby / aria-invalid linking a control to its Field's error and hint. */
+export function useFieldDescription() {
+  return useContext(FieldDescriptionContext)
+}
+
 export function Field({
   label,
   hint,
@@ -175,32 +183,42 @@ export function Field({
 }) {
   const generatedId = useId()
   const fieldId = id ?? generatedId
+  const errorId = `${fieldId}-error`
+  const hintId = `${fieldId}-hint`
+  const describedBy = [error && errorId, hint && hintId].filter(Boolean).join(' ') || undefined
+  const description = useMemo(
+    () => ({ 'aria-describedby': describedBy, 'aria-invalid': error ? (true as const) : undefined }),
+    [describedBy, error]
+  )
   return (
     <FieldIdContext.Provider value={fieldId}>
-      <div className={cn('block', className)}>
-        {label && (labelAsText ? (
-          <span className="mb-1.5 block text-xs font-semibold text-fg-muted">{label}</span>
-        ) : (
-          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-semibold text-fg-muted">
-            {label}
-          </label>
-        ))}
-        {children}
-        {error && <p role="alert" className="mt-1 text-xs text-danger-text">{error}</p>}
-        {hint && <span className="mt-1 block text-xs text-fg-muted">{hint}</span>}
-      </div>
+      <FieldDescriptionContext.Provider value={description}>
+        {/* field-label gets a required asterisk from globals.css when the field holds a :required control. */}
+        <div className={cn('field block', className)}>
+          {label && (labelAsText ? (
+            <span className="field-label mb-1.5 block text-xs font-semibold text-fg-muted">{label}</span>
+          ) : (
+            <label htmlFor={fieldId} className="field-label mb-1.5 block text-xs font-semibold text-fg-muted">
+              {label}
+            </label>
+          ))}
+          {children}
+          {error && <p id={errorId} role="alert" className="mt-1 text-xs text-danger-text">{error}</p>}
+          {hint && <span id={hintId} className="mt-1 block text-xs text-fg-muted">{hint}</span>}
+        </div>
+      </FieldDescriptionContext.Provider>
     </FieldIdContext.Provider>
   )
 }
 
 export function Input({ className, id, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const fieldId = useFieldId()
-  return <input id={id ?? fieldId} className={controlClass(className)} {...props} />
+  return <input id={id ?? fieldId} className={controlClass(className)} {...useFieldDescription()} {...props} />
 }
 
 export function Select({ className, id, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   const fieldId = useFieldId()
-  return <select id={id ?? fieldId} className={cn(controlClass(className), 'cursor-pointer')} {...props} />
+  return <select id={id ?? fieldId} className={cn(controlClass(className), 'cursor-pointer')} {...useFieldDescription()} {...props} />
 }
 
 export function Autocomplete({
@@ -230,6 +248,7 @@ export function Autocomplete({
   const containerRef = useRef<HTMLDivElement>(null)
   const listId = useId()
   const fieldId = useFieldId()
+  const description = useFieldDescription()
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -254,6 +273,7 @@ export function Autocomplete({
         aria-controls={open ? listId : undefined}
         aria-activedescendant={open && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
         aria-autocomplete="list"
+        {...description}
         required={required}
         value={open ? query : value}
         placeholder={placeholder}
