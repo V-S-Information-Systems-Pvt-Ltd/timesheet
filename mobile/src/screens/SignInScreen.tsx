@@ -104,7 +104,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
     }
   }, [serverUrl]);
 
-  const accent = palette.primary;
+  const accent = palette.primaryText;
   const inputStyle = (hasError: boolean) => [
     styles.input,
     {

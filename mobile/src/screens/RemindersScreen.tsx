@@ -346,7 +346,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
                 onPress={() => setDismissTarget(g)}
                 style={styles.dismissBtn}
               >
-                <Text style={[styles.dismissText, { color: palette.primary }]}>Dismiss</Text>
+                <Text style={[styles.dismissText, { color: palette.primaryText }]}>Dismiss</Text>
               </PressableScale>
             </View>
           ))}

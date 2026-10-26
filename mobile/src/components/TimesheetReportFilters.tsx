@@ -29,7 +29,7 @@ export function TimesheetReportFilters({ value, onChange, palette }: {
       {value.entryType !== 'legacy' ? <Pressable accessibilityRole="button" accessibilityLabel="Filter activity"
         onPress={() => setOpen(true)} style={[styles.activityRow, { borderTopColor: palette.hairline }]}>
         <Text style={[styles.label, { color: palette.muted }]}>Activity</Text>
-        <Text style={[styles.activityValue, { color: palette.primary }]}>
+        <Text style={[styles.activityValue, { color: palette.primaryText }]}>
           {value.activityCode ? activityLabel(value.activityCode) : 'All activities'}
         </Text>
       </Pressable> : null}

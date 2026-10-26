@@ -49,18 +49,18 @@ describe('MissingDaysStrip', () => {
 
     const texts = root.findAllByType(Text).map(t => [t.props.children].flat().join(''));
     expect(texts).toContain('2 working days missing. Tap one to log it.');
-    expect(label(root, '2026-02-02')).toBe('2026-02-02: 8h logged');
-    expect(label(root, '2026-02-03')).toBe('2026-02-03: Leave');
-    expect(label(root, '2026-02-04')).toBe('2026-02-04: Independence Day');
-    expect(label(root, '2026-02-01')).toBe('2026-02-01');
-    expect(label(root, '2026-02-09')).toBe('2026-02-09');
+    expect(label(root, 'Monday 2 February')).toBe('Monday 2 February: 8h logged');
+    expect(label(root, 'Tuesday 3 February')).toBe('Tuesday 3 February: Leave');
+    expect(label(root, 'Wednesday 4 February')).toBe('Wednesday 4 February: Independence Day');
+    expect(label(root, 'Sunday 1 February')).toBe('Sunday 1 February');
+    expect(label(root, 'Monday 9 February')).toBe('Monday 9 February');
 
-    const missingButton = root.findByProps({ accessibilityLabel: '2026-02-05: Missing, log time for this day' });
+    const missingButton = root.findByProps({ accessibilityLabel: 'Thursday 5 February: Missing, log time for this day' });
     await ReactTestRenderer.act(async () => {
       missingButton.props.onPress();
     });
     expect(onPick).toHaveBeenCalledWith('2026-02-05');
-    expect(root.findAllByProps({ accessibilityLabel: '2026-02-06: Missing, log time for this day' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ accessibilityLabel: 'Friday 6 February: Missing, log time for this day' }).length).toBeGreaterThan(0);
   });
 
   it('renders nothing when the month cannot be loaded', async () => {
@@ -79,10 +79,10 @@ describe('MissingDaysStrip minLogDate', () => {
   it('keeps missing days before the window red but not tappable', async () => {
     const { root, onPick } = await render({ minLogDate: '2026-02-05' });
     // 02-02 is before the window: still reported missing, but a plain view.
-    expect(root.findAllByProps({ accessibilityLabel: '2026-02-02: Missing' }).length).toBeGreaterThan(0);
-    expect(root.findAllByProps({ accessibilityLabel: '2026-02-02: Missing, log time for this day' }).length).toBe(0);
+    expect(root.findAllByProps({ accessibilityLabel: 'Monday 2 February: Missing' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ accessibilityLabel: 'Monday 2 February: Missing, log time for this day' }).length).toBe(0);
     await ReactTestRenderer.act(async () => {
-      root.findAllByProps({ accessibilityLabel: '2026-02-05: Missing, log time for this day' })[0].props.onPress();
+      root.findAllByProps({ accessibilityLabel: 'Thursday 5 February: Missing, log time for this day' })[0].props.onPress();
     });
     expect(onPick).toHaveBeenCalledWith('2026-02-05');
   });

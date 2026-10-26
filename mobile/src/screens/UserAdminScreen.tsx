@@ -563,7 +563,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
               onPress={() => handleOpenEdit(item)}
               style={adminStyles.iconButton}
             >
-              <Icon color={palette.primary} name="edit" size={18} />
+              <Icon color={palette.primaryText} name="edit" size={18} />
             </PressableScale>
           </View>
         </View>
@@ -711,7 +711,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                     }}
                     style={adminStyles.iconButton}
                   >
-                    <Icon color={palette.primary} name="edit" size={18} />
+                    <Icon color={palette.primaryText} name="edit" size={18} />
                   </PressableScale>
                   <PressableScale
                     accessibilityLabel={`Delete ${item.name}`}
@@ -885,7 +885,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                     {`${impactInfo.affectedCount} user${impactInfo.affectedCount === 1 ? '' : 's'} currently hold this title.`}
                   </Text>
                   {impactInfo.syncRequired ? (
-                    <Text style={[styles.impactText, { color: palette.primary }]}>
+                    <Text style={[styles.impactText, { color: palette.primaryText }]}>
                       {`Turning on sync updates all ${impactInfo.affectedCount} user${impactInfo.affectedCount === 1 ? '' : 's'} to ${humanize(reclassifyRole)} in one step.`}
                     </Text>
                   ) : (
