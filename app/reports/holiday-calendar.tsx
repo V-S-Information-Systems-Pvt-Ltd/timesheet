@@ -51,10 +51,11 @@ function holidayCell(holidays: Map<string, Holiday>) {
   }
 }
 
+// Each state has a non-colour cue too: logged = fill, missing = solid ring + bold, leave = dashed outline.
 const MISSING_LEGEND = [
   ['bg-success-surface ring-1 ring-success-ring', 'Logged'],
-  ['bg-danger-surface ring-1 ring-danger-ring', 'Missing'],
-  ['bg-leave-surface ring-1 ring-leave-ring', 'Leave'],
+  ['bg-danger-surface ring-2 ring-inset ring-danger-text', 'Missing'],
+  ['bg-leave-surface outline-1 outline-dashed -outline-offset-1 outline-leave-text', 'Leave'],
   ['bg-primary-600', 'Mercantile holiday'],
 ] as const
 
@@ -67,11 +68,11 @@ export function missingDayCell(hoursByDate: Map<string, number>, leaveDates: Set
     const hours = hoursByDate.get(iso)
     const holiday = holidays.get(iso)
     if (holiday) return { className: 'bg-primary-600 font-semibold text-white', title: holiday.name }
-    if (leaveDates.has(iso)) return { className: 'bg-leave-surface text-leave-text', title: 'Leave' }
+    if (leaveDates.has(iso)) return { className: 'bg-leave-surface text-leave-text outline-1 outline-dashed -outline-offset-1 outline-leave-text', title: 'Leave' }
     if (hours) return { className: 'bg-success-surface font-medium text-success-text', title: `${hours}h logged` }
     if (weekend) return { className: 'text-fg-subtle' }
     if (iso > today) return { className: 'text-fg-muted' }
-    return { className: 'bg-danger-surface font-semibold text-danger-text ring-1 ring-danger-ring', title: 'Missing', missing: true }
+    return { className: 'bg-danger-surface font-semibold text-danger-text ring-2 ring-inset ring-danger-text', title: 'Missing', missing: true }
   }
 }
 
