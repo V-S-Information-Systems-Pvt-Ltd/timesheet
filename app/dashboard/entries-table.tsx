@@ -799,7 +799,7 @@ export default function EntriesTable({
                     const canEdit = canModifyRow(t)
                     if (editingId === t.id) {
                       return (
-                        <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 dark:text-primary-200">
+                        <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 text-primary-text">
                           <td colSpan={8} className="p-3">
                             <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
                               <Field label="Date" className="w-36" error={editFieldErrors.logDate?.[0]}>
@@ -859,7 +859,7 @@ export default function EntriesTable({
                           {t.customer && <div className="text-xs">Customer: {t.customer}</div>}
                           {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
                         </Td>
-                        <Td className="text-right tabular-nums">{t.hours_worked}</Td>
+                        <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
                         <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         <Td className="text-right relative">
                           {canDuplicateRow(t) ? (

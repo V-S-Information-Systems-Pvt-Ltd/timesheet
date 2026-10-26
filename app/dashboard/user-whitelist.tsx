@@ -155,7 +155,7 @@ export default function UserWhitelist({
           <p className="text-xs text-warning-text">New sign-ups wait here until you activate them.</p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {inactiveUsers.slice(0, INACTIVE_PREVIEW).map(u => (
-              <li key={u.id} className="flex items-center gap-2 rounded-lg border border-border bg-card py-1 pl-2.5 pr-1 text-sm">
+              <li key={u.id} className="flex items-center gap-2 rounded-control border border-border bg-card py-1 pl-2.5 pr-1 text-sm">
                 <button type="button" onClick={() => setSelectedId(u.id)} className="max-w-56 truncate text-left text-fg hover:underline">
                   {u.name || u.email}
                 </button>
@@ -240,7 +240,7 @@ export default function UserWhitelist({
           onClose={() => { if (!deactivationLock.current) setPendingUser(null) }}
           labelledBy="deactivate-dialog-title"
           describedBy="deactivate-dialog-desc"
-          className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-card"
+          className="w-full max-w-md rounded-sheet border border-line bg-card p-6"
         >
           <h3 id="deactivate-dialog-title" className="text-lg font-semibold text-fg">
             Deactivate {pendingUser.email}?
@@ -406,7 +406,7 @@ function UserEditor({
         </EditorSection>
 
         {orgAdmin && canHaveScope && !isSelf && (
-          <fieldset className="space-y-2 rounded-lg border border-border p-3">
+          <fieldset className="space-y-2 rounded-control border border-border p-3">
             <legend className="px-1 text-sm font-semibold text-fg">Department access</legend>
             <p className="text-xs text-fg-muted">
               {draft.scope.length === 0
@@ -490,7 +490,7 @@ function PasswordReset({ user }: { user: User }) {
           onClose={close}
           labelledBy="password-dialog-title"
           describedBy="password-dialog-desc"
-          className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-card"
+          className="w-full max-w-md rounded-sheet border border-line bg-card p-6"
         >
           <h3 id="password-dialog-title" className="text-lg font-semibold text-fg">
             {generated ? `New password for ${who}` : `Generate a new password for ${who}?`}
@@ -500,7 +500,7 @@ function PasswordReset({ user }: { user: User }) {
               <p id="password-dialog-desc" className="mt-1 text-sm text-fg-muted">
                 Give this to {who}. It is shown only once; they can change it after signing in.
               </p>
-              <output aria-label="Generated password" className="mt-4 block select-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-base tracking-wide text-fg">
+              <output aria-label="Generated password" className="mt-4 block select-all rounded-control border border-border bg-muted px-3 py-2 font-mono text-base tracking-wide text-fg">
                 {generated}
               </output>
               <div className="mt-4 flex gap-2">

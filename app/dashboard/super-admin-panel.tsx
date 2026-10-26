@@ -354,7 +354,7 @@ export default function SuperAdminPanel({
           </form>
 
           <AsyncSection loading={domainsLoading} error={domainsError} reload={reloadDomains} skeletonLines={2}>
-          <TableFrame className="rounded-xl border border-border">
+          <TableFrame className="rounded-sheet border border-line">
             <thead className="border-b border-border bg-muted/60">
               <tr>
                 <Th>Domain</Th>
@@ -432,7 +432,7 @@ export default function SuperAdminPanel({
           </form>
 
           <AsyncSection loading={titlesLoading} error={titlesError} reload={reloadTitles} skeletonLines={2}>
-          <TableFrame className="rounded-xl border border-border">
+          <TableFrame className="rounded-sheet border border-line">
             <thead className="border-b border-border bg-muted/60">
               <tr>
                 <Th>Title Name</Th>
@@ -514,7 +514,7 @@ export default function SuperAdminPanel({
             <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
           </div>
 
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
+          <div className="rounded-control bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s)
             {users.filter(u => !u.is_active).length > 0 && (
@@ -579,7 +579,7 @@ export default function SuperAdminPanel({
           </Field>
 
           {/* Live Preview */}
-          <div className="rounded-xl border border-border bg-muted p-4">
+          <div className="rounded-sheet border border-line bg-muted p-4">
             <div className="text-xs font-semibold text-fg-subtle mb-2">
               Branding Preview
             </div>
@@ -732,7 +732,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
+          <div className="rounded-control bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (

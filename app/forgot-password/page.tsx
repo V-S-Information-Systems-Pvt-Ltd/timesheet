@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
           <p className="mt-1.5 text-sm font-medium text-fg-muted">Reset your password</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
+        <div className="rounded-sheet border border-line bg-card p-6 md:p-8">
           <p className="mb-5 text-sm leading-relaxed text-fg-muted">
             Enter your work email and we’ll send a secure link if an account matches it.
           </p>

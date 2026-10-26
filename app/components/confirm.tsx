@@ -50,7 +50,7 @@ export function ConfirmDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-sheet border border-line bg-card p-5"
     >
       <h3 className="text-sm font-semibold text-fg">{title}</h3>
       <p className="mt-2 whitespace-pre-line text-sm text-fg-muted">{message}</p>
@@ -133,7 +133,7 @@ export function PromptDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-sheet border border-line bg-card p-5"
     >
       <form
         onSubmit={(e) => {

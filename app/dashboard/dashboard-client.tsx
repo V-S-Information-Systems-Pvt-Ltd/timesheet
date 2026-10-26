@@ -592,7 +592,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   if (loading) return <LoadingState fullscreen />
 
   if (identityError) return (
-    <div className="mx-auto my-16 max-w-md rounded-xl border border-line bg-card shadow-card p-8 text-center">
+    <div className="mx-auto my-16 max-w-md rounded-sheet border border-line bg-card p-8 text-center">
       <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Something went wrong</h1>
       <p className="mt-2 text-fg-muted">{identityError}</p>
       <Button className="mt-6" onClick={() => window.location.reload()}>Try again</Button>
@@ -612,15 +612,15 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-xl border border-line bg-card shadow-card p-8 text-center">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-300 ring-1 ring-inset ring-rose-200 dark:ring-rose-900">
+        <div className="w-full max-w-md rounded-sheet border border-line bg-card p-8 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-danger-surface text-danger-text ring-1 ring-inset ring-rose-200 dark:ring-rose-900">
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Something went wrong</h1>
           <p className="mt-2 text-sm text-fg-muted">
             We couldn&apos;t load your profile. Please try again.
           </p>
-          {profileError && <p className="mt-4 text-sm text-rose-600 dark:text-rose-300">Error: {profileError}</p>}
+          {profileError && <p className="mt-4 text-sm text-danger-text">Error: {profileError}</p>}
           <Button onClick={() => fetchProfile(user.id)} className="mt-6 w-full">
             Try again
           </Button>
@@ -643,8 +643,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-xl border border-line bg-card shadow-card p-8 text-center">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-200 dark:ring-amber-900">
+        <div className="w-full max-w-md rounded-sheet border border-line bg-card p-8 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning-surface text-warning-text ring-1 ring-inset ring-amber-200 dark:ring-amber-900">
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Account Pending Approval</h1>
@@ -692,12 +692,12 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
       {showMonthSummary && (
         <>
-          <section className="card-in mb-6 overflow-hidden rounded-xl border border-line bg-card shadow-card">
+          <section className="card-in mb-6 overflow-hidden rounded-sheet border border-line bg-card">
             <div aria-hidden className="h-0.5 bg-primary-600" />
             <div className="flex flex-wrap items-end gap-x-10 gap-y-5 p-5 sm:p-6" aria-live="polite">
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-display text-4xl font-bold tabular-nums tracking-tight text-fg">
+                  <span className="font-numeral text-5xl font-medium tabular-nums text-fg">
                     {monthTotals.status === 'ready' ? monthTotals.totals.totalHours : <span className="text-fg-subtle">—</span>}
                   </span>
                   <span className="font-display text-lg font-medium text-fg-muted">hrs</span>
@@ -705,7 +705,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
                 <p className="mt-1 text-sm text-fg-muted">logged this month</p>
               </div>
               <div className="min-w-0">
-                <span className="font-display text-2xl font-semibold tabular-nums tracking-tight text-fg">
+                <span className="font-numeral text-3xl font-medium tabular-nums text-fg">
                   {monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : <span className="text-fg-subtle">—</span>}
                 </span>
                 <p className="mt-1 text-sm text-fg-muted">entries</p>

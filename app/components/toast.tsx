@@ -16,15 +16,15 @@ export function toast(message: string, type: ToastType = 'info') {
 }
 
 const TOAST_STYLE: Record<ToastType, { icon: ReactNode; cls: string }> = {
-  success: { icon: <IconCheckCircle className="h-5 w-5" />, cls: 'border-emerald-200 dark:border-emerald-900 bg-card' },
-  error: { icon: <IconXCircle className="h-5 w-5" />, cls: 'border-rose-200 dark:border-rose-900 bg-card' },
-  info: { icon: <IconInfo className="h-5 w-5" />, cls: 'border-border bg-card' },
+  success: { icon: <IconCheckCircle className="h-5 w-5" />, cls: 'border-success-ring bg-card' },
+  error: { icon: <IconXCircle className="h-5 w-5" />, cls: 'border-danger-ring bg-card' },
+  info: { icon: <IconInfo className="h-5 w-5" />, cls: 'border-line bg-card' },
 }
 
 const TOAST_ICON_CLS: Record<ToastType, string> = {
-  success: 'text-emerald-500 dark:text-emerald-300',
-  error: 'text-rose-500 dark:text-rose-300',
-  info: 'text-primary-500 dark:text-primary-200',
+  success: 'text-success-text',
+  error: 'text-danger-text',
+  info: 'text-primary-text',
 }
 
 export function Toaster() {
@@ -47,7 +47,7 @@ export function Toaster() {
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
     >
       {items.map((t) => (
         <button
@@ -56,12 +56,12 @@ export function Toaster() {
           role={t.type === 'error' ? 'alert' : 'status'}
           onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
           className={cn(
-            'pointer-events-auto flex items-start gap-2.5 rounded-xl border px-4 py-3 text-left shadow-card-hover animate-[fadeIn_0.15s_ease-out]',
+            'pointer-events-auto flex items-start gap-2.5 rounded-sheet border px-4 py-3 text-left animate-[fadeIn_0.15s_ease-out]',
             TOAST_STYLE[t.type].cls
           )}
         >
           <span className={cn('mt-0.5 shrink-0', TOAST_ICON_CLS[t.type])}>{TOAST_STYLE[t.type].icon}</span>
-          <span className="text-sm text-fg-muted">{t.message}</span>
+          <span className="text-sm text-fg">{t.message}</span>
         </button>
       ))}
     </div>

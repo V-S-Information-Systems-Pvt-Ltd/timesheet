@@ -136,7 +136,7 @@ export default function HierarchyEditor({
           </span>
         </div>
 
-        <TableFrame className="table-stack rounded-xl border border-border">
+        <TableFrame className="table-stack rounded-sheet border border-line">
           <thead className="border-b border-border bg-muted/60">
             <tr>
               <Th>User</Th>

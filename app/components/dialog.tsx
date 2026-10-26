@@ -102,7 +102,7 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/30 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-ink/40 p-4"
       onClick={(e) => {
         // Only backdrop clicks dismiss. Events from controls inside the panel
         // (including ProjectPicker options) stop propagation and never reach here.

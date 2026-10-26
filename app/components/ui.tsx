@@ -14,7 +14,7 @@ import { IconChevronDown } from './icons'
 export { Menu, type MenuItem } from './menu'
 
 export const inputCls =
-  'w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-fg placeholder:text-fg-subtle transition-colors hover:border-fg-muted focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+  'min-h-11 w-full rounded-control border border-border bg-card px-3 py-2.5 text-sm text-fg placeholder:text-fg-subtle transition-colors hover:border-fg-muted focus:border-primary-text focus:outline-none focus:ring-2 focus:ring-primary-text/25 md:min-h-0'
 
 // cn joins classes without resolving Tailwind conflicts. Omit the default
 // width when a caller requests one, rather than relying on CSS emission order.
@@ -31,20 +31,20 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'succ
 export type ButtonSize = 'sm' | 'md'
 
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
+  'inline-flex items-center justify-center gap-1.5 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
 
 const BTN_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
   secondary:
-    'border border-border bg-card text-fg-muted hover:bg-muted hover:text-fg hover:border-line active:bg-muted',
+    'border border-border bg-card text-fg hover:bg-muted active:bg-muted',
   danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800',
   success: 'bg-emerald-700 text-white hover:bg-emerald-800 active:bg-emerald-900',
   ghost: 'text-fg-muted hover:bg-muted hover:text-fg',
 }
 
 const BTN_SIZES: Record<ButtonSize, string> = {
-  sm: 'px-2.5 py-1.5 text-xs',
-  md: 'px-3.5 py-2 text-sm',
+  sm: 'min-h-11 px-3 py-1.5 text-xs md:min-h-0 md:px-2.5',
+  md: 'min-h-11 px-3.5 py-2 text-sm md:min-h-0',
 }
 
 export function btnClass(
@@ -68,7 +68,7 @@ export type IconButtonTone = 'default' | 'primary' | 'danger'
 
 const ICON_BTN_TONES: Record<IconButtonTone, string> = {
   default: 'text-fg-muted hover:bg-muted hover:text-fg',
-  primary: 'text-primary-700 dark:text-primary-200 hover:bg-primary-50 dark:hover:bg-primary-900/30',
+  primary: 'text-primary-text hover:bg-primary-50 dark:hover:bg-primary-900/30',
   danger: 'text-fg-muted hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-300',
 }
 
@@ -80,7 +80,7 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /** Square, icon-only button with a required accessible name. Collapses the
- *  hand-rolled `inline-flex … rounded-lg p-N hover:bg-muted` buttons. */
+ *  hand-rolled `inline-flex … rounded-control p-N hover:bg-muted` buttons. */
 export function IconButton({ label, size = 'md', tone = 'default', className, type = 'button', ...props }: IconButtonProps) {
   return (
     <button
@@ -88,7 +88,8 @@ export function IconButton({ label, size = 'md', tone = 'default', className, ty
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex items-center justify-center rounded-control transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        'min-h-11 min-w-11 md:min-h-0 md:min-w-0',
         size === 'sm' ? 'p-1' : 'p-2',
         ICON_BTN_TONES[tone],
         className
@@ -111,7 +112,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     <div
       role="group"
       aria-label="Theme"
-      className={cn('inline-flex items-center gap-0.5 rounded-lg bg-muted p-1', className)}
+      className={cn('inline-flex items-center gap-0.5 rounded-full bg-muted p-1', className)}
     >
       {options.map(({ value, label, icon: Icon }) => {
         const active = theme === value
@@ -123,9 +124,9 @@ export function ThemeToggle({ className }: { className?: string }) {
             aria-pressed={active}
             onClick={() => setTheme(value)}
             className={cn(
-              'rounded-lg',
+              'rounded-full',
               active
-                ? 'bg-card text-fg shadow-sm ring-1 ring-border'
+                ? 'bg-ink text-surface hover:text-surface'
                 : 'text-fg-muted hover:text-fg'
             )}
           >
@@ -178,14 +179,14 @@ export function Field({
     <FieldIdContext.Provider value={fieldId}>
       <div className={cn('block', className)}>
         {label && (labelAsText ? (
-          <span className="mb-1.5 block text-xs font-medium text-fg-muted">{label}</span>
+          <span className="mb-1.5 block text-xs font-semibold text-fg-muted">{label}</span>
         ) : (
-          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-medium text-fg-muted">
+          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-semibold text-fg-muted">
             {label}
           </label>
         ))}
         {children}
-        {error && <p role="alert" className="mt-1 text-xs text-rose-600 dark:text-rose-300">{error}</p>}
+        {error && <p role="alert" className="mt-1 text-xs text-danger-text">{error}</p>}
         {hint && <span className="mt-1 block text-xs text-fg-muted">{hint}</span>}
       </div>
     </FieldIdContext.Provider>
@@ -306,7 +307,7 @@ export function Autocomplete({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-card"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-control border border-border bg-card py-1"
           onMouseDown={(e) => e.preventDefault()}
         >
           {matches.map((opt, i) => (
@@ -320,8 +321,8 @@ export function Autocomplete({
               <button
                 type="button"
                 className={cn(
-                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
-                  i === activeIndex && 'bg-primary-50 dark:bg-primary-900/30 font-medium text-primary-700 dark:text-primary-200'
+                  'block min-h-11 w-full px-3 py-2 text-left md:min-h-0 text-sm transition-colors hover:bg-muted',
+                  i === activeIndex && 'bg-primary-50 dark:bg-primary-900/30 font-medium text-primary-text'
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault()
@@ -359,7 +360,7 @@ export function Checkbox({
   )
   if (label === undefined) return box
   return (
-    <label className="flex min-h-9 cursor-pointer items-center gap-2.5 text-sm text-fg-muted">
+    <label className="flex min-h-11 cursor-pointer md:min-h-9 items-center gap-2.5 text-sm text-fg-muted">
       {box}
       <span>{label}</span>
     </label>
@@ -470,7 +471,7 @@ export function Badge({
   children: ReactNode
 }) {
   const tones: Record<string, string> = {
-    slate: 'bg-muted text-fg-muted ring-border',
+    slate: 'bg-muted text-fg-muted ring-line',
     green: 'bg-success-surface text-success-text ring-success-ring',
     amber: 'bg-warning-surface text-warning-text ring-warning-ring',
     red: 'bg-danger-surface text-danger-text ring-danger-ring',
@@ -558,7 +559,7 @@ export function Alert({
 }) {
   const t = ALERT_TONES[tone]
   return (
-    <div role={t.role} className={cn('rounded-lg px-3 py-2 text-sm ring-1 ring-inset', t.cls, className)}>
+    <div role={t.role} className={cn('rounded-control px-3 py-2 text-sm ring-1 ring-inset', t.cls, className)}>
       {title && <p className="font-medium">{title}</p>}
       {children}
     </div>
@@ -622,17 +623,17 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('card-in rounded-xl border border-line bg-card shadow-card', className)}>
+    <section className={cn('card-in rounded-sheet border border-line bg-card', className)}>
       {(title || actions || collapsible) && (
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
           <div className="flex min-w-0 max-w-full items-center gap-2.5">
             {icon && (
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-fg-muted">
+              <span className="flex h-8 w-8 items-center justify-center rounded-control bg-muted text-fg-muted">
                 {icon}
               </span>
             )}
             <div className="min-w-0">
-              <h2 className="font-display text-sm font-bold text-fg">{title}</h2>
+              <h2 className="font-display text-sm font-semibold text-fg">{title}</h2>
               {subtitle && <p className="text-xs text-fg-muted">{subtitle}</p>}
             </div>
           </div>
@@ -658,7 +659,7 @@ export function Card({
 
 export function SkeletonCard({ className, lines = 3 }: { className?: string; lines?: number }) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-sheet border border-line bg-card p-5', className)}>
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, i) => (
           <div
@@ -690,7 +691,7 @@ export function StatCard({
   accent?: 'primary' | 'green' | 'amber' | 'blue'
 }) {
   const accents: Record<string, string> = {
-    primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200',
+    primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-text',
     green: 'bg-success-surface text-success-text',
     amber: 'bg-warning-surface text-warning-text',
     blue: 'bg-info-surface text-info-text',
@@ -703,15 +704,15 @@ export function StatCard({
         : 'text-fg-muted'
     : null
   return (
-    <div className="flex items-center gap-3.5 rounded-xl border border-line bg-card p-5 shadow-card">
+    <div className="flex items-center gap-3.5 rounded-sheet border border-line bg-card p-5">
       {icon && (
-        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', accents[accent])}>
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-control', accents[accent])}>
           {icon}
         </span>
       )}
       <div className="min-w-0">
-        <div className="text-xs font-medium text-fg-muted">{label}</div>
-        <div className="truncate font-display text-2xl font-semibold tabular-nums tracking-tight text-fg">{value}</div>
+        <div className="text-xs font-semibold text-fg-muted">{label}</div>
+        <div className="truncate font-numeral text-3xl font-medium tabular-nums leading-tight text-fg">{value}</div>
         {sub && <div className="text-xs text-fg-muted">{sub}</div>}
         {delta && <div className={cn('text-xs font-medium tabular-nums', deltaTone)}>{delta}</div>}
       </div>
@@ -733,7 +734,7 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
-        <h1 className="font-display text-xl font-bold text-fg">{title}</h1>
+        <h1 className="font-display text-2xl font-semibold text-fg">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -753,12 +754,7 @@ export function SegmentedTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div
-      className={cn(
-        'inline-flex max-w-full items-center gap-4 overflow-x-auto border-b border-border',
-        className
-      )}
-    >
+    <div className={cn('flex max-w-full items-center gap-2 overflow-x-auto py-0.5', className)}>
       {options.map((o) => {
         const active = o.key === value
         return (
@@ -768,10 +764,10 @@ export function SegmentedTabs<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
+              'inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors md:min-h-9',
               active
-                ? 'border-primary-600 text-primary-700 dark:border-primary-300 dark:text-primary-200'
-                : 'border-transparent text-fg-muted hover:text-fg'
+                ? 'border-ink bg-ink text-surface'
+                : 'border-border bg-card text-fg hover:bg-muted'
             )}
           >
             {o.icon}
@@ -799,11 +795,11 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
+        'flex flex-col items-center justify-center rounded-sheet border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
         className
       )}
     >
-      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-card text-fg-muted shadow-sm ring-1 ring-border">{icon}</div>}
+      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-card text-fg-muted ring-1 ring-line">{icon}</div>}
       <p className="text-sm font-medium text-fg-muted">{title}</p>
       {description && <p className="mt-1 max-w-sm text-xs text-fg-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -820,7 +816,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
     <th
       scope="col"
       className={cn(
-        'bg-muted px-4 py-2.5 text-sm font-semibold text-fg-muted',
+        'bg-muted px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-fg-muted',
         !/(?:^|\s)text-(?:left|right|center)(?=\s|$)/.test(className ?? '') && 'text-left',
         className
       )}
@@ -832,7 +828,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
 
 export function Td({ children, className, label }: { children?: ReactNode; className?: string; /** Column label shown beside the cell in stacked mobile tables (see .table-stack). */ label?: string }) {
   const hasForeground = /(?:^|\s)text-fg(?:-muted|-subtle)?(?:\/\S+)?(?=\s|$)/.test(className ?? '')
-  return <td data-label={label} className={cn('border-b border-dashed border-line px-4 py-2.5 text-sm', !hasForeground && 'text-fg', className)}>{children}</td>
+  return <td data-label={label} className={cn('border-b border-line px-4 py-2.5 text-sm', !hasForeground && 'text-fg', className)}>{children}</td>
 }
 
 /** Horizontal-scroll container + table scaffold shared by the data tables.
@@ -848,7 +844,7 @@ export function TableFrame({
   tableClassName?: string
 }) {
   return (
-    <div className={cn('table-scroll overflow-x-auto rounded-lg', className)}>
+    <div className={cn('table-scroll overflow-x-auto rounded-control', className)}>
       <table className={cn('w-full border-collapse text-left', tableClassName)}>{children}</table>
     </div>
   )

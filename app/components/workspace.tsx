@@ -100,7 +100,7 @@ export function PickRow({ selected, onSelect, leading, title, subtitle, trailing
         aria-pressed={selected}
         aria-label={label}
         className={cn(
-          'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors',
+          'flex w-full items-center gap-3 rounded-control px-2.5 py-2 text-left transition-colors',
           selected ? 'bg-primary-600/10 ring-1 ring-inset ring-primary-600/40' : 'hover:bg-muted',
         )}
       >

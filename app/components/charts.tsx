@@ -27,7 +27,7 @@ export function BarChartCard({ title, data, description }: HoursChartProps) {
   const shown = data.slice(0, 12)
   if (!data.length) return <EmptyState title="No hours to plot" />
   if (data.length === 1) {
-    return <div className="rounded-lg bg-muted p-4 text-sm text-fg"><span className="font-medium">{data[0].label}</span>: {fmtHours(data[0].hours)} hrs</div>
+    return <div className="rounded-control bg-muted p-4 text-sm text-fg"><span className="font-medium">{data[0].label}</span>: {fmtHours(data[0].hours)} hrs</div>
   }
   return (
     <figure className="min-w-0" aria-labelledby={titleId}>

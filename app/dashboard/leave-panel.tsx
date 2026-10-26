@@ -181,7 +181,7 @@ export default function LeavePanel({
             />
           ) : (
             <DataTable
-              className="rounded-lg border border-border"
+              className="rounded-control border border-border"
               caption="Monthly leave summary"
               rows={summary}
               rowKey={(_, i) => String(i)}
@@ -209,7 +209,7 @@ export default function LeavePanel({
           />
         ) : (
           <DataTable
-            className="rounded-lg border border-border"
+            className="rounded-control border border-border"
             caption="Marked leave days"
             rows={leafRows}
             rowKey={l => l.id}

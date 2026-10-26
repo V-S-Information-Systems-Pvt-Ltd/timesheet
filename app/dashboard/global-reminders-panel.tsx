@@ -173,7 +173,7 @@ function AdminView() {
       </form>
 
       <AsyncSection loading={loading} error={loadError} reload={reload}>
-      <TableFrame className="mt-4 rounded-lg border border-border" tableClassName="text-sm">
+      <TableFrame className="mt-4 rounded-control border border-border" tableClassName="text-sm">
         <caption className="sr-only">Global reminders</caption>
         <thead className="bg-muted/60">
           <tr>

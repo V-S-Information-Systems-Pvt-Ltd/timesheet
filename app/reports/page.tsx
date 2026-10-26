@@ -634,7 +634,7 @@ function ReportsPage() {
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                           <Td className="font-medium text-fg">{reportGroupLabel(t, 'project')}</Td>
                           <Td className="text-fg-muted">{reportGroupLabel(t, 'activity')}</Td>
-                          <Td className="text-right tabular-nums">{t.hours_worked}</Td>
+                          <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
                           <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         </tr>
                       ))}
@@ -683,7 +683,7 @@ function ReportsPage() {
           >
             <div className="flex items-end gap-6">
               <div>
-                <div className="text-4xl font-bold tabular-nums tracking-tight text-primary-700 dark:text-primary-200">
+                <div className="font-numeral text-5xl font-medium tabular-nums text-primary-text">
                   {fmtHours(sumHours(mySummaryRows))}
                   <span className="ml-1 text-lg font-medium text-fg-muted">hrs</span>
                 </div>
@@ -726,7 +726,7 @@ function ReportsPage() {
               ) : (
                 <div className="space-y-4">
                   <BarChartCard title="Hours per user" data={projectSummaryRows.map(row => ({ label: row.email, hours: row.hours }))} />
-                  <TableFrame className="overflow-x-auto rounded-lg border border-border" tableClassName="text-sm">
+                  <TableFrame className="overflow-x-auto rounded-control border border-border" tableClassName="text-sm">
                     <thead className="bg-muted/60">
                       <tr>
                         <Th>User</Th>
