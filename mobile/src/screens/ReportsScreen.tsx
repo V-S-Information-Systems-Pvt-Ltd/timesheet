@@ -241,7 +241,7 @@ export function ReportsScreen({
       {filterUser ? (
         <View style={[styles.filterBanner, { borderColor: palette.hairline }]}>
           <View style={styles.filterBannerContent}>
-            <Icon color={palette.primary} name="team" size={14} />
+            <Icon color={palette.primaryText} name="team" size={14} />
             <Text numberOfLines={1} style={[styles.filterBannerText, { color: palette.foreground }]}>
               Showing {filterUser.name || filterUser.email || 'selected member'}
             </Text>
@@ -254,7 +254,7 @@ export function ReportsScreen({
               onPress={onClearFilterUser}
               style={styles.clearBtn}
             >
-              <Text style={[styles.clearBtnText, { color: palette.primary }]}>Show everyone</Text>
+              <Text style={[styles.clearBtnText, { color: palette.primaryText }]}>Show everyone</Text>
             </Pressable>
           ) : null}
         </View>

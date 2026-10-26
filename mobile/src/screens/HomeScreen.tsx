@@ -305,7 +305,7 @@ export function HomeScreen({
               scaleTo={1}
               style={styles.sectionLink}
             >
-              <Text style={[styles.sectionLinkText, { color: palette.primary }]}>All timesheets</Text>
+              <Text style={[styles.sectionLinkText, { color: palette.primaryText }]}>All timesheets</Text>
             </PressableScale>
           </View>
 

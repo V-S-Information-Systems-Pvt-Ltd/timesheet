@@ -259,7 +259,7 @@ export function DateChooserModal({
               ) : (
                 <Text style={[styles.previewText, { color: palette.muted }]}>
                   {previewLabel}{' '}
-                  <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
+                  <Text style={[styles.previewHighlight, { color: palette.primaryText }]}>{formattedPreview}</Text>
                 </Text>
               )}
             </ScrollView>
