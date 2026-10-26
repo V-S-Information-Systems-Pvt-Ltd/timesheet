@@ -87,7 +87,7 @@ export default function WelcomePage() {
           <p className="mt-2 text-sm text-fg-muted">Simple, reliable time tracking for VSIS teams.</p>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-line bg-card p-6 shadow-card md:p-8">
+        <div className="relative overflow-hidden rounded-sheet border border-line bg-card p-6 md:p-8">
           {showSignup && (
             <SegmentedTabs
               value={mode}
@@ -141,7 +141,7 @@ export default function WelcomePage() {
             {mode === 'signin' && (
               <Link
                 href="/forgot-password"
-                className="block text-center text-sm font-medium text-primary-700 dark:text-primary-200 transition hover:text-primary-800 dark:hover:text-primary-200"
+                className="block text-center text-sm font-medium text-primary-text transition hover:underline"
               >
                 Forgot password?
               </Link>
@@ -152,7 +152,7 @@ export default function WelcomePage() {
           {message && <Alert tone="success" className="mt-4">{message}</Alert>}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-lg bg-muted px-3 py-2.5 text-xs leading-relaxed text-fg-muted ring-1 ring-inset ring-border">
+            <p className="mt-5 rounded-control bg-muted px-3 py-2.5 text-xs leading-relaxed text-fg-muted ring-1 ring-inset ring-line">
               Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}

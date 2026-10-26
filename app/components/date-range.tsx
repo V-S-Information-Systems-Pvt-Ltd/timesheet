@@ -90,10 +90,10 @@ export function DateRangePicker({
                 aria-pressed={active}
                 onClick={() => onPresetChange(value)}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  'min-h-11 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors md:min-h-0',
                   active
-                    ? 'border-primary-300 dark:border-primary-900 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200'
-                    : 'border-border bg-card text-fg-muted hover:bg-muted hover:text-fg'
+                    ? 'border-ink bg-ink text-surface'
+                    : 'border-border bg-card text-fg hover:bg-muted'
                 )}
               >
                 {label}

@@ -10,103 +10,105 @@
    (bg-card, text-fg, border-border, shadow-card, …) flips in one place. */
 :root {
   color-scheme: light;
-  /* Pulse: white surfaces, slate typography and quiet green accents.
-     Action green is darker than the accent to retain AA text contrast. */
-  --background: #ffffff;
-  --foreground: #1c252e;
-  --surface: #ffffff;
-  --ink: #1c252e;
+  /* Timecard: ink for text and structure, paper behind white sheets, hairlines
+     instead of shadows. Mirrors mobile/src/theme.ts. */
+  --background: #f3f6f9; /* paper */
+  --foreground: #13294b;
+  --surface: #f3f6f9;
+  --ink: #13294b;
 
-  --primary-50: #ebf8f2;
-  --primary-100: #c8fad6;
-  --primary-200: #a0edc0;
-  --primary-300: #5be49b;
-  --primary-400: #2dca8c;
-  --primary-500: #00a76f;
-  --primary-600: #007867;
-  --primary-700: #006c5c;
-  --primary-800: #005c52;
-  --primary-900: #004b50;
+  /* Default scale; layout.tsx overrides it from workspace branding. */
+  --primary-50: #eff8ff;
+  --primary-100: #d4e5f2;
+  --primary-200: #a5c9e5;
+  --primary-300: #75acd9;
+  --primary-400: #4b92cd;
+  --primary-500: #2e7fc2;
+  --primary-600: #1e73be;
+  --primary-700: #1a5c98;
+  --primary-800: #194a77;
+  --primary-900: #1a3a58;
+  /* Primary-coloured text and icons, clamped to 4.5:1 (layout.tsx sets both). */
+  --primary-text-light: #1d6eb6;
+  --primary-text-dark: #629dd2;
+  --primary-text: var(--primary-text-light);
 
-  /* Raw semantic tokens are shared by all controls, cards and tables. */
-  --card: #ffffff;
-  --border: #dfe3e8;
-  --fg: #1c252e;
-  --fg-muted: #637381;
-  --fg-subtle: #637381;
-  --muted: #f4f6f8;
+  --card: #ffffff; /* sheet */
+  --border: #7d8ca3; /* control border: 3:1 on sheet and paper (WCAG 1.4.11) */
+  --line: #e1e7ef; /* hairline */
+  --fg: #13294b;
+  --fg-muted: #55657e;
+  --fg-subtle: #5d6c82;
+  --muted: #edf1f6;
   --chart-hours: var(--primary-600);
 
-  --line: #e9ecee;
+  /* Status tokens (surface / text / ring). Logged = success, missing = danger. */
+  --success-surface: #e3f1e8;
+  --success-text: #1f6b43;
+  --success-ring: #b7d9c5;
+  --warning-surface: #fffbeb;
+  --warning-text: #92400e;
+  --warning-ring: #fde68a;
+  --danger-surface: #fde7e8;
+  --danger-text: #c8232a;
+  --danger-ring: #f6bcbf;
+  --info-surface: #eef2fd;
+  --info-text: #1a43ac;
+  --info-ring: #c3d0f5;
+  --leave-surface: #ece7f5;
+  --leave-text: #5b4590;
+  --leave-ring: #d4c9ea;
 
-  /* Semantic status tokens (surface / text / ring). The .dark block overrides
-     the same raw vars, so status utilities (bg-success-surface, text-danger-text,
-     ring-warning-ring, …) flip in one place without per-element `dark:` variants.
-     Mirrors the Alert reference shades: surface=-50, text=-700 (warning -800),
-     ring=-200. Danger stays rose, not corporate red, so brand emphasis and
-     destructive intent remain distinguishable (brand-guidelines.md §2). */
-  --success-surface: #ecfdf5; /* emerald-50 */
-  --success-text: #047857;    /* emerald-700 */
-  --success-ring: #a7f3d0;    /* emerald-200 */
-  --warning-surface: #fffbeb; /* amber-50 */
-  --warning-text: #92400e;    /* amber-800 */
-  --warning-ring: #fde68a;    /* amber-200 */
-  --danger-surface: #fff1f2;  /* rose-50 */
-  --danger-text: #be123c;     /* rose-700 */
-  --danger-ring: #fecdd3;     /* rose-200 */
-  --info-surface: #eff6ff;    /* blue-50 */
-  --info-text: #1d4ed8;       /* blue-700 */
-  --info-ring: #bfdbfe;       /* blue-200 */
+  /* Overlay behind dialogs and the nav drawer; stays dark in both modes. */
+  --scrim: rgb(19 41 75 / 0.45);
 
-  /* Card shadows (raw so the .dark block can swap them for dark-safe values). */
-  --shadow-card-raw: 0 0 2px 0 rgb(145 158 171 / 0.2), 0 12px 24px -4px rgb(145 158 171 / 0.12);
-  --shadow-card-hover-raw: 0 0 2px 0 rgb(145 158 171 / 0.2), 0 16px 32px -4px rgb(145 158 171 / 0.2);
+  --shadow-card-raw: none;
+  --shadow-card-hover-raw: none;
 }
 
-/* Dark theme: overrides the raw vars :root defines. `color-scheme: dark` flips
-   native form controls and scrollbars; the card surface sits above the page
-   background for elevation. Status tints stay on each component via `dark:`
-   variants so badges/alerts keep their semantic hue. */
 .dark {
   color-scheme: dark;
-  --background: #141a21;
-  --foreground: #f4f6f8;
-  --surface: #141a21;
-  --ink: #f4f6f8;
+  --background: #0e1a2e;
+  --foreground: #eaf0f7;
+  --surface: #0e1a2e;
+  --ink: #eaf0f7;
 
-  --card: #1c252e;
-  --border: #454f5b;
-  --fg: #f4f6f8;
-  --fg-muted: #c4cdd5;
-  --fg-subtle: #aebac5;
-  --muted: #28323d;
+  --primary-text: var(--primary-text-dark);
+
+  --card: #16243b;
+  --border: #647aa0; /* 3:1 on sheet and paper */
+  --line: #24344f;
+  --fg: #eaf0f7;
+  --fg-muted: #9aa8bd;
+  --fg-subtle: #9aa8bd;
+  --muted: #1d2d49;
   --chart-hours: var(--primary-500);
 
-  --line: #333e49;
+  --success-surface: #14332a;
+  --success-text: #7fd3a5;
+  --success-ring: #245443;
+  --warning-surface: #382b14;
+  --warning-text: #fcd34d;
+  --warning-ring: #5c4520;
+  --danger-surface: #3a1d26;
+  --danger-text: #ff8a8f;
+  --danger-ring: #5f2d39;
+  --info-surface: #1b2d52;
+  --info-text: #9db7ff;
+  --info-ring: #2f4a80;
+  --leave-surface: #2a2347;
+  --leave-text: #b3a2e0;
+  --leave-ring: #433a70;
 
-  /* Status tokens: surfaces are the -950 tint at 40% so the card shows through
-     (matching the former `dark:bg-*-950/40`); text -300, ring -900. */
-  --success-surface: rgb(2 44 34 / 0.4);  /* emerald-950/40 */
-  --success-text: #6ee7b7;                 /* emerald-300 */
-  --success-ring: #064e3b;                 /* emerald-900 */
-  --warning-surface: rgb(69 26 3 / 0.4);  /* amber-950/40 */
-  --warning-text: #fcd34d;                 /* amber-300 */
-  --warning-ring: #78350f;                 /* amber-900 */
-  --danger-surface: rgb(76 5 25 / 0.4);   /* rose-950/40 */
-  --danger-text: #fda4af;                  /* rose-300 */
-  --danger-ring: #881337;                  /* rose-900 */
-  --info-surface: rgb(23 37 84 / 0.4);    /* blue-950/40 */
-  --info-text: #93c5fd;                    /* blue-300 */
-  --info-ring: #1e3a8a;                    /* blue-900 */
-
-  --shadow-card-raw: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.4);
-  --shadow-card-hover-raw: 0 8px 24px -4px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.5);
+  --scrim: rgb(4 9 18 / 0.7);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-public-sans), "Public Sans", system-ui, sans-serif;
+  /* Hours and metric numbers (use with tabular-nums). */
+  --font-numeral: var(--font-barlow), "Barlow Semi Condensed", var(--font-public-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-public-sans), "Public Sans", system-ui, sans-serif;
 
@@ -121,6 +123,14 @@
   --color-primary-700: var(--primary-700);
   --color-primary-800: var(--primary-800);
   --color-primary-900: var(--primary-900);
+  --color-primary-text: var(--primary-text);
+
+  --radius-sheet: 18px;
+  --radius-control: 10px;
+
+  /* Solid logged green for white-text actions (4.5:1 in both modes). */
+  --color-logged-700: #1f6b43;
+  --color-logged-800: #18563a;
 
   --color-brand-red-50: #fff1f2;
   --color-brand-red-100: #ffe1e3;
@@ -159,6 +169,10 @@
   --color-info-surface: var(--info-surface);
   --color-info-text: var(--info-text);
   --color-info-ring: var(--info-ring);
+  --color-leave-surface: var(--leave-surface);
+  --color-leave-text: var(--leave-text);
+  --color-leave-ring: var(--leave-ring);
+  --color-scrim: var(--scrim);
 
   /* Shadows (raw-var indirection so the .dark block can swap them) */
   --shadow-card: var(--shadow-card-raw);
@@ -208,7 +222,7 @@ body {
 
 /* Consistent, accessible focus rings */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-primary-600);
+  outline: 2px solid var(--primary-text);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -244,8 +258,8 @@ body {
   }
   .table-stack tr {
     display: block;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sheet);
     margin-bottom: 0.75rem;
     padding: 0.25rem 0.75rem;
   }

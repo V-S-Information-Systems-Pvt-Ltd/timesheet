@@ -64,10 +64,10 @@ function SidebarNav({
   })
 
   const linkCls = (active: boolean, nested: boolean) => cn(
-    'relative flex min-h-10 items-center gap-3 rounded-md pr-3 text-sm transition-colors',
+    'relative flex min-h-11 items-center gap-3 rounded-full pr-3 lg:min-h-10 text-sm transition-colors',
     nested ? 'pl-10' : 'pl-3 font-medium',
     active
-      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-100 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:bg-primary-600 dark:before:bg-primary-300'
+      ? 'bg-ink text-surface'
       : 'text-fg-muted hover:bg-muted hover:text-fg'
   )
 
@@ -101,7 +101,7 @@ function SidebarNav({
                 aria-controls={panelId}
                 onClick={() => toggle(group.key)}
                 className={cn(
-                  'flex min-h-10 flex-1 items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition-colors hover:bg-muted',
+                  'flex min-h-11 flex-1 items-center gap-3 rounded-full px-3 lg:min-h-10 text-left text-sm font-medium transition-colors hover:bg-muted',
                   activeGroup === group.key ? 'text-fg' : 'text-fg-muted hover:text-fg'
                 )}
               >
@@ -270,7 +270,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => { setDrawerOpen(false); customizer.onOpenChange(true) }}
-            className="flex min-h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+            className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
           >
             <IconDashboard className="h-4 w-4" />
             Customize menu
@@ -279,9 +279,9 @@ export function AppShell({
         <button
           type="button"
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
-          className="flex min-h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
         >
-          <kbd className="rounded border border-border bg-muted px-1.5 text-xs">?</kbd>
+          <kbd className="rounded border border-line bg-muted px-1.5 text-xs">?</kbd>
           Keyboard shortcuts
         </button>
         {inDrawer && <ThemeToggle className="mt-2" />}
@@ -312,14 +312,14 @@ export function AppShell({
         aria-hidden={!drawerOpen}
         onClick={() => setDrawerOpen(false)}
       >
-        <div className="absolute inset-0 bg-black/30" />
+        <div className="absolute inset-0 bg-scrim" />
         <aside
           ref={drawerRef}
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
           className={cn(
-            'absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl transition-transform duration-200',
+            'absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-line bg-card transition-transform duration-200',
             drawerOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           onClick={(e) => e.stopPropagation()}
@@ -342,7 +342,7 @@ export function AppShell({
             aria-label="Open navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(true)}
-            className="inline-flex shrink-0 items-center justify-center rounded-lg p-2.5 text-fg-muted transition-colors hover:bg-muted hover:text-fg lg:hidden"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-2.5 text-fg-muted transition-colors hover:bg-muted hover:text-fg lg:hidden"
           >
             <IconMenu className="h-5 w-5" />
           </button>
@@ -408,10 +408,10 @@ export function AppShell({
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
         labelledBy="shortcuts-title"
-        className="w-full max-w-md rounded-xl bg-card shadow-xl"
+        className="w-full max-w-md rounded-sheet border border-line bg-card"
       >
         <div data-shortcuts-modal>
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h3 id="shortcuts-title" className="font-display text-sm font-semibold tracking-tight text-fg">Keyboard shortcuts</h3>
             <IconButton size="sm" label="Close shortcuts" onClick={() => setShortcutsOpen(false)}>
               <IconX className="h-4 w-4" />
@@ -430,7 +430,7 @@ export function AppShell({
                   {items.map((s, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <span className="text-fg-muted">{s.description}</span>
-                      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-fg-muted">{s.keys}</kbd>
+                      <kbd className="rounded border border-line bg-muted px-1.5 py-0.5 text-xs font-medium text-fg-muted">{s.keys}</kbd>
                     </div>
                   ))}
                 </div>

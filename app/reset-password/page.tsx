@@ -78,7 +78,7 @@ export default function ResetPasswordPage() {
           <p className="mt-1.5 text-sm font-medium text-fg-muted">Choose a new password</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
+        <div className="rounded-sheet border border-line bg-card p-6 md:p-8">
           {checking ? (
             <LoadingState label="Checking reset link…" />
           ) : showForm ? (
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
             <div className="space-y-4 text-center">
               <Alert tone="error">{INVALID_MESSAGE}</Alert>
               <p className="text-sm text-fg-muted">Request a new link to continue.</p>
-              <Link href="/forgot-password" className="block text-sm font-medium text-primary-700 dark:text-primary-200 hover:text-primary-800 dark:hover:text-primary-200">Request a new reset link</Link>
+              <Link href="/forgot-password" className="block text-sm font-medium text-primary-text hover:underline">Request a new reset link</Link>
             </div>
           )}
 

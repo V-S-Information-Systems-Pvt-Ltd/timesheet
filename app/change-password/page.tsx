@@ -92,14 +92,14 @@ export default function ChangePasswordPage() {
     <AppShell name={name} email={email} role={role} isActive={isActive} nav={nav} customizer={customizer} breadcrumb={['Account', 'Change password']} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200 ring-1 ring-inset ring-primary-100 dark:ring-primary-900">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-sheet bg-primary-50 dark:bg-primary-900/30 text-primary-text ring-1 ring-inset ring-primary-100 dark:ring-primary-900">
             <IconKey className="h-6 w-6" />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-fg">Change Password</h1>
           <p className="mt-1 text-sm text-fg-muted">Update the password for your account.</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
+        <div className="rounded-sheet border border-line bg-card p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Current Password">
               <Input

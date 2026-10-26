@@ -58,7 +58,7 @@ export default function VerifyEmailPage() {
           <p className="mt-1.5 text-sm font-medium text-fg-muted">Confirm your email address</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
+        <div className="rounded-sheet border border-line bg-card p-6 md:p-8">
           {state === 'checking' && <LoadingState label="Confirming your address…" />}
           {state === 'verified' && (
             <Alert tone="success">
@@ -69,7 +69,7 @@ export default function VerifyEmailPage() {
             <div className="space-y-4 text-center">
               <Alert tone="error">{error}</Alert>
               <p className="text-sm text-fg-muted">Resetting your password also confirms your address.</p>
-              <Link href="/forgot-password" className="block text-sm font-medium text-primary-700 dark:text-primary-200 hover:text-primary-800">Send a password reset link</Link>
+              <Link href="/forgot-password" className="block text-sm font-medium text-primary-text hover:underline">Send a password reset link</Link>
             </div>
           )}
           <Link href="/" className="mt-5 block w-full text-center text-sm text-fg-muted transition hover:text-fg-muted">← Back to Sign In</Link>

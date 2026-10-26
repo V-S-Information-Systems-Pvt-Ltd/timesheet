@@ -37,7 +37,7 @@ export function MenuCustomizer({ config }: { config: MenuCustomizerConfig }) {
       open={config.open}
       onClose={() => config.onOpenChange(false)}
       labelledBy="menu-customizer-title"
-      className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-card shadow-card-hover"
+      className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-sheet border border-line bg-card"
     >
       {/* Mounted only while open, so the draft starts from the saved menu each time. */}
       {config.open && <MenuCustomizerBody config={config} />}
@@ -116,7 +116,7 @@ function MenuCustomizerBody({ config }: { config: MenuCustomizerConfig }) {
 
   return (
     <>
-      <header className="border-b border-border px-5 py-4">
+      <header className="border-b border-line px-5 py-4">
         <h2 id="menu-customizer-title" className="text-base font-semibold text-fg">Customize menu</h2>
         <p className="text-sm text-fg-muted">Pick a view, or choose exactly which items show in the sidebar. Hidden pages stay reachable by link.</p>
       </header>
@@ -129,7 +129,7 @@ function MenuCustomizerBody({ config }: { config: MenuCustomizerConfig }) {
               <label
                 key={v.key}
                 className={cn(
-                  'flex cursor-pointer gap-2.5 rounded-lg p-3 ring-1 ring-inset transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600',
+                  'flex cursor-pointer gap-2.5 rounded-control p-3 ring-1 ring-inset transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600',
                   view === v.key ? 'bg-primary-600/10 ring-primary-600/40' : 'ring-border hover:bg-muted',
                   v.key === 'custom' && view !== 'custom' && 'cursor-default',
                 )}
@@ -200,7 +200,7 @@ function MenuCustomizerBody({ config }: { config: MenuCustomizerConfig }) {
         <div aria-live="polite" role="status" className="sr-only">{announcement}</div>
       </div>
 
-      <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
+      <footer className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
         <Button type="button" variant="ghost" size="sm" onClick={reset} className="mr-auto">Reset to default</Button>
         <Button type="button" variant="ghost" onClick={() => config.onOpenChange(false)}>Cancel</Button>
         <Button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save menu'}</Button>
@@ -228,7 +228,7 @@ function ItemRow({ label, checked, onToggle, onMove, first, last }: {
   last?: boolean
 }) {
   return (
-    <li className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 hover:bg-muted">
+    <li className="flex items-center gap-1 rounded-control px-1.5 py-0.5 hover:bg-muted">
       <div className="min-w-0 flex-1"><Checkbox label={label} checked={checked} onChange={onToggle} /></div>
       {onMove && (
         <>
