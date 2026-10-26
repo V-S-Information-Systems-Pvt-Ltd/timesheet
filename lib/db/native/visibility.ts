@@ -22,7 +22,9 @@ export function visibleUserClause(actor: Actor, userIdColumn: string, params: un
     params.push(scope)
     conds.push(`vu.department = any($${params.length}::text[])`)
   }
-  return `(${userIdColumn} = ${self} or exists (select 1 from public.profiles vu where vu.id = ${userIdColumn} and ${conds.join(' and ')}))`
+  // `in` keeps userIdColumn outside the subquery: inside it, an unqualified
+  // `id` would bind to `vu.id` and make the predicate always true.
+  return `(${userIdColumn} = ${self} or ${userIdColumn} in (select vu.id from public.profiles vu where ${conds.join(' and ')}))`
 }
 
 /** Timesheet read scope (alias `t`): own rows, a leader's team, or all,
