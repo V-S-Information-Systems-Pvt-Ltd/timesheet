@@ -37,8 +37,8 @@ const BTN_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
   secondary:
     'border border-border bg-card text-fg hover:bg-muted active:bg-muted',
-  danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800',
-  success: 'bg-emerald-700 text-white hover:bg-emerald-800 active:bg-emerald-900',
+  danger: 'bg-brand-red-600 text-white hover:bg-brand-red-700 active:bg-brand-red-700',
+  success: 'bg-logged-700 text-white hover:bg-logged-800 active:bg-logged-800',
   ghost: 'text-fg-muted hover:bg-muted hover:text-fg',
 }
 
@@ -69,7 +69,7 @@ export type IconButtonTone = 'default' | 'primary' | 'danger'
 const ICON_BTN_TONES: Record<IconButtonTone, string> = {
   default: 'text-fg-muted hover:bg-muted hover:text-fg',
   primary: 'text-primary-text hover:bg-primary-50 dark:hover:bg-primary-900/30',
-  danger: 'text-fg-muted hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-300',
+  danger: 'text-fg-muted hover:bg-danger-surface hover:text-danger-text',
 }
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -439,11 +439,11 @@ export function FileField({
 /* ------------------------------------------------------------------ */
 
 const ROLE_BADGES: Record<UserRole, string> = {
-  admin: 'bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 ring-violet-200 dark:ring-violet-900',
-  pm: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900',
-  co: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900',
-  manager: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-900',
-  team_lead: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900',
+  admin: 'bg-leave-surface text-leave-text ring-leave-ring',
+  pm: 'bg-info-surface text-info-text ring-info-ring',
+  co: 'bg-success-surface text-success-text ring-success-ring',
+  manager: 'bg-primary-50 text-primary-text ring-primary-100 dark:bg-primary-900/30 dark:ring-primary-900',
+  team_lead: 'bg-warning-surface text-warning-text ring-warning-ring',
   user: 'bg-muted text-fg-muted ring-border',
 }
 

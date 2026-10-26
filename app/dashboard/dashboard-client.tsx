@@ -613,7 +613,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         centered
       >
         <div className="w-full max-w-md rounded-sheet border border-line bg-card p-8 text-center">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-danger-surface text-danger-text ring-1 ring-inset ring-rose-200 dark:ring-rose-900">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-danger-surface text-danger-text ring-1 ring-inset ring-danger-ring">
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Something went wrong</h1>
@@ -644,7 +644,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         centered
       >
         <div className="w-full max-w-md rounded-sheet border border-line bg-card p-8 text-center">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning-surface text-warning-text ring-1 ring-inset ring-amber-200 dark:ring-amber-900">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning-surface text-warning-text ring-1 ring-inset ring-warning-ring">
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Account Pending Approval</h1>

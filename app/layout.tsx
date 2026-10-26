@@ -27,8 +27,8 @@ const publicSans = localFont({
 
 const barlow = localFont({
   src: [
-    { path: "../public/fonts/BarlowSemiCondensed-Medium.ttf", weight: "500", style: "normal" },
-    { path: "../public/fonts/BarlowSemiCondensed-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../public/fonts/BarlowSemiCondensed-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../public/fonts/BarlowSemiCondensed-SemiBold.woff2", weight: "600", style: "normal" },
   ],
   variable: "--font-barlow",
   display: "swap",

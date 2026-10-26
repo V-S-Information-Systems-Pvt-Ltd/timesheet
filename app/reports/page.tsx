@@ -647,7 +647,7 @@ function ReportsPage() {
                         Showing {timesheets.length} of {totalCount} entries — totals update as more load.
                       </span>
                       {loadMoreError && (
-                        <p className="text-xs font-medium text-rose-600 dark:text-rose-300">{loadMoreError}</p>
+                        <p className="text-xs font-medium text-danger-text">{loadMoreError}</p>
                       )}
                     </div>
                     <Button variant="secondary" size="sm" onClick={loadMoreTimesheets} disabled={loadingMore}>

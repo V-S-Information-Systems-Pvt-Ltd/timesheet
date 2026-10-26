@@ -704,7 +704,7 @@ export default function EntriesTable({
            <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleEditLast} data-shortcut="edit-last">
              <IconPencil className="h-3.5 w-3.5" /> Edit Last
            </Button>
-           <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" data-shortcut="undo-last">
+           <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleUndoLast} className="text-danger-text hover:bg-danger-surface hover:text-danger-text" data-shortcut="undo-last">
              <IconTrash className="h-3.5 w-3.5" /> Undo Last
            </Button>
          </>

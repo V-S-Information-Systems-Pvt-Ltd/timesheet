@@ -65,7 +65,7 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
         </p>
         <div className="ml-auto hidden sm:block"><MissingLegend /></div>
       </div>
-      <ol className="grid grid-cols-7 gap-1 sm:gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
+      <ol className="grid grid-cols-7 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
         {days.map(d => {
           const state = cell?.(d.iso, d.weekend) ?? { className: 'text-fg-subtle' }
           const label = `${d.iso}${state.title ? `: ${state.title}` : ''}`

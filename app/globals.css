@@ -123,6 +123,10 @@
   --radius-sheet: 18px;
   --radius-control: 10px;
 
+  /* Solid logged green for white-text actions (4.5:1 in both modes). */
+  --color-logged-700: #1f6b43;
+  --color-logged-800: #18563a;
+
   --color-brand-red-50: #fff1f2;
   --color-brand-red-100: #ffe1e3;
   --color-brand-red-500: #ea2b32;
