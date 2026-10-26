@@ -231,7 +231,9 @@ export function AppShell({
         case 'n': handled = focusBySelector('[data-shortcut="time-entry-form"]'); break
         case 'e': handled = focusBySelector('[data-shortcut="edit-last"]'); break
         case 'u': handled = focusBySelector('[data-shortcut="undo-last"]'); break
-        case '/': handled = focusBySelector('#project-input'); break
+        // The project picker only renders once Type is "Project"; fall back to the Type select.
+        case '/': handled = focusBySelector('[data-shortcut="time-entry-form"] input[id$="-project"]') ||
+          focusBySelector('[data-shortcut="time-entry-form"] select[id$="-type"]'); break
         case '?': setShortcutsOpen(true); handled = true; break
       }
       if (handled) e.preventDefault()
