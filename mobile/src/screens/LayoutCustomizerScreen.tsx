@@ -315,7 +315,7 @@ export function LayoutCustomizerScreen({
               return (
                 <View key={m.id} style={[styles.row, { borderBottomColor: palette.hairline }]}>
                   <View style={[styles.iconWrapper, { backgroundColor: palette.primaryLight }]}>
-                    <Icon color={palette.primary} name={meta.icon} size={20} />
+                    <Icon color={palette.primaryText} name={meta.icon} size={20} />
                   </View>
 
                   <View style={styles.textContainer}>
@@ -323,7 +323,7 @@ export function LayoutCustomizerScreen({
                       <Text style={[styles.itemTitle, { color: palette.foreground }]}>{meta.title}</Text>
                       {isEssential && (
                         <View style={[styles.essentialBadge, { backgroundColor: palette.primaryLight }]}>
-                          <Text style={[styles.essentialText, { color: palette.primary }]}>Essential</Text>
+                          <Text style={[styles.essentialText, { color: palette.primaryText }]}>Essential</Text>
                         </View>
                       )}
                     </View>

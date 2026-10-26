@@ -37,7 +37,7 @@ export function ScreenHeader({
               onPress={onBack}
               style={styles.backButton}
             >
-              <Text style={[styles.backButtonText, { color: palette.primary }]}>{backLabel}</Text>
+              <Text style={[styles.backButtonText, { color: palette.primaryText }]}>{backLabel}</Text>
             </Pressable>
           ) : (
             <View />

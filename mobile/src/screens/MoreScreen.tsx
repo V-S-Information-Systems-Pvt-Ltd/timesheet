@@ -47,7 +47,7 @@ export function MoreScreen({ isDarkMode: _isDarkMode, onNavigate }: MoreScreenPr
       scaleTo={1}
       style={[styles.row, { borderBottomColor: palette.hairline }]}
     >
-      <Icon color={palette.primary} name={icon} size={22} />
+      <Icon color={palette.primaryText} name={icon} size={22} />
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: palette.foreground }]}>{title}</Text>
         <Text style={[styles.rowSubtitle, { color: palette.muted }]}>{description}</Text>

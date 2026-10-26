@@ -137,7 +137,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
               }}
               style={styles.textAction}
             >
-              <Text style={[styles.textActionLabel, { color: palette.primary }]}>
+              <Text style={[styles.textActionLabel, { color: palette.primaryText }]}>
                 {isEditingProfile ? 'Cancel' : 'Edit'}
               </Text>
             </PressableScale>
@@ -219,7 +219,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
               onPress={() => setShowPasswordForm(!showPasswordForm)}
               style={styles.textAction}
             >
-              <Text style={[styles.textActionLabel, { color: palette.primary }]}>
+              <Text style={[styles.textActionLabel, { color: palette.primaryText }]}>
                 {showPasswordForm ? 'Cancel' : 'Change password'}
               </Text>
             </PressableScale>

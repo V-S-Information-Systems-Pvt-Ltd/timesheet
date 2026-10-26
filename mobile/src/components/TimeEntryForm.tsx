@@ -492,8 +492,8 @@ export function TimeEntryForm({
           scaleTo={1}
           style={[styles.copyLast, { borderBottomColor: palette.hairline }]}
         >
-          <Icon color={palette.primary} name="clock" size={16} />
-          <Text numberOfLines={1} style={[styles.copyLastText, { color: palette.primary }]}>
+          <Icon color={palette.primaryText} name="clock" size={16} />
+          <Text numberOfLines={1} style={[styles.copyLastText, { color: palette.primaryText }]}>
             Copy last entry: {lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'}, {lastEntry.hours_worked} h
           </Text>
         </PressableScale>
@@ -723,7 +723,7 @@ export function TimeEntryForm({
                     onPress={() => setIsProjectPickerOpen(true)}
                     style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
                   >
-                    <Text style={[styles.chipText, { color: palette.primary }]}>
+                    <Text style={[styles.chipText, { color: palette.primaryText }]}>
                       {`Browse all (${reference?.projects?.length ?? 0})`}
                     </Text>
                   </PressableScale>
@@ -762,7 +762,7 @@ export function TimeEntryForm({
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 onPress={() => setIsActivityPickerOpen(true)}
               >
-                <Text style={[styles.rowLabelRight, { color: palette.primary }]}>Browse all</Text>
+                <Text style={[styles.rowLabelRight, { color: palette.primaryText }]}>Browse all</Text>
               </Pressable>
             ) : null
           )

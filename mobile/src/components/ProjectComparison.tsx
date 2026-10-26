@@ -176,7 +176,7 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
             <Text style={[styles.stat, { color: palette.foreground }]}>A: {totals.a.toFixed(1)} hrs</Text>
             <Text style={[styles.stat, { color: palette.foreground }]}>B: {totals.b.toFixed(1)} hrs</Text>
           </View>
-          <Text accessibilityLabel="Comparison delta" style={[styles.delta, { color: palette.primary }]}>
+          <Text accessibilityLabel="Comparison delta" style={[styles.delta, { color: palette.primaryText }]}>
             Change (B vs A): {delta.hours} ({delta.percent})
           </Text>
         </View>

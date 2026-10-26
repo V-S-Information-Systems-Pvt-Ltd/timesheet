@@ -9,6 +9,7 @@ import { holidaysInYear } from '@vsis/core';
 import type { LeaveRow, TimesheetListParams, TimesheetListResult } from '../api/contracts';
 import { borderRadius, fonts, spacing, typography, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
+import { formatDayLine } from '../utils/dates';
 
 // ponytail: one 1000-row page (the server maximum) covers a user's month; a
 // full page is treated as incomplete so the strip never reports false gaps.
@@ -141,20 +142,20 @@ export function MissingDaysStrip({ userId, today, refreshKey, listTimesheets, li
               <Text style={[styles.day, s.bold && styles.bold, { color: s.fg }]}>{d.day}</Text>
             </>
           );
-          const label = `${d.iso}${title ? `: ${title}` : ''}`;
+          const label = `${formatDayLine(d.iso)}${title ? `: ${title}` : ''}`;
           return state === 'missing' && !(minLogDate && d.iso < minLogDate) ? (
             <PressableScale
               key={d.iso}
               accessibilityLabel={`${label}, log time for this day`}
               accessibilityRole="button"
               onPress={() => onPick(d.iso)}
-              style={cellStyle}
+              style={styles.slot}
             >
-              {inner}
+              <View style={cellStyle}>{inner}</View>
             </PressableScale>
           ) : (
-            <View key={d.iso} accessibilityLabel={label} accessible style={cellStyle}>
-              {inner}
+            <View key={d.iso} accessibilityLabel={label} accessible style={styles.slot}>
+              <View style={cellStyle}>{inner}</View>
             </View>
           );
         })}
@@ -172,9 +173,12 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: typography.heading, fontWeight: '600' },
   summary: { fontSize: typography.caption, marginTop: 2, marginBottom: spacing.sm },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  // Seven slots per row, each fully tappable: the 3px visual gap is slot padding, so there is no dead zone between days.
+  slot: { width: '14.2857%', padding: 1.5 },
   cell: {
-    width: 34,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: 3,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
