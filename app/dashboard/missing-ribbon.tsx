@@ -20,6 +20,8 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
 }) {
   const [data, setData] = useState<{ hours: Map<string, number>; leave: Set<string> } | null>(null)
   const [error, setError] = useState(false)
+  // Phones fold the 5-row grid behind a toggle so Log Time is not pushed below the fold.
+  const [open, setOpen] = useState(false)
   const monthStart = `${today.slice(0, 7)}-01`
 
   useEffect(() => {
@@ -64,8 +66,11 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
           {!data ? 'Checking your month…' : missing === 0 ? 'Nothing missing so far.' : `${missing} working day${missing === 1 ? '' : 's'} missing. Pick one to log it.`}
         </p>
         <div className="ml-auto hidden sm:block"><MissingLegend /></div>
+        <button type="button" aria-expanded={open} aria-controls={`${monthStart}-days`} onClick={() => setOpen(o => !o)} className="-my-2 ml-auto inline-flex min-h-11 items-center text-sm font-medium text-primary-text hover:underline sm:hidden">
+          {open ? 'Hide days' : 'Show days'}
+        </button>
       </div>
-      <ol className="grid grid-cols-7 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
+      <ol id={`${monthStart}-days`} className={cn(open ? 'grid' : 'hidden sm:grid', 'grid-cols-7 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none')}>
         {days.map(d => {
           const state = cell?.(d.iso, d.weekend) ?? { className: 'text-fg-subtle' }
           const label = `${d.iso}${state.title ? `: ${state.title}` : ''}`

@@ -147,6 +147,17 @@ describe('Field descriptions', () => {
     expect(html).toContain('class="field ')
   })
 
+  it('keeps the error link when the control sets its own aria-describedby', () => {
+    const html = renderToStaticMarkup(
+      createElement(F, { label: 'Hours', id: 'hours', error: 'Too many' }, createElement(Input, { 'aria-describedby': 'split-hint' }))
+    )
+    expect(html).toContain('aria-describedby="hours-error split-hint"')
+    const unset = renderToStaticMarkup(
+      createElement(F, { label: 'Hours', id: 'hours', error: 'Too many' }, createElement(Input, { 'aria-describedby': undefined }))
+    )
+    expect(unset).toContain('aria-describedby="hours-error"')
+  })
+
   it('leaves a valid control without aria-invalid or a dangling describedby', () => {
     const html = renderToStaticMarkup(createElement(F, { label: 'Hours', id: 'hours' }, createElement(Select)))
     expect(html).not.toContain('aria-invalid="')

@@ -3,7 +3,7 @@
 // Icons live in ./icons.tsx and toasts in ./toast.tsx.
 'use client'
 
-import { createContext, useContext, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes } from 'react'
+import { createContext, useContext, useId, useMemo, useRef, useState, type AriaAttributes, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
@@ -156,9 +156,15 @@ export function useFieldId(): string | undefined {
 
 const FieldDescriptionContext = createContext<{ 'aria-describedby'?: string; 'aria-invalid'?: true }>({})
 
-/** aria-describedby / aria-invalid linking a control to its Field's error and hint. */
-export function useFieldDescription() {
-  return useContext(FieldDescriptionContext)
+/** aria-describedby / aria-invalid linking a control to its Field's error and
+ *  hint, merged with any the control sets itself (an explicit undefined must
+ *  not drop the Field's error link). */
+export function useFieldDescription(own?: { 'aria-describedby'?: string; 'aria-invalid'?: AriaAttributes['aria-invalid'] }) {
+  const field = useContext(FieldDescriptionContext)
+  return {
+    'aria-describedby': [field['aria-describedby'], own?.['aria-describedby']].filter(Boolean).join(' ') || undefined,
+    'aria-invalid': own?.['aria-invalid'] ?? field['aria-invalid'],
+  }
 }
 
 export function Field({
@@ -213,12 +219,12 @@ export function Field({
 
 export function Input({ className, id, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const fieldId = useFieldId()
-  return <input id={id ?? fieldId} className={controlClass(className)} {...useFieldDescription()} {...props} />
+  return <input id={id ?? fieldId} className={controlClass(className)} {...props} {...useFieldDescription(props)} />
 }
 
 export function Select({ className, id, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   const fieldId = useFieldId()
-  return <select id={id ?? fieldId} className={cn(controlClass(className), 'cursor-pointer')} {...useFieldDescription()} {...props} />
+  return <select id={id ?? fieldId} className={cn(controlClass(className), 'cursor-pointer')} {...props} {...useFieldDescription(props)} />
 }
 
 export function Autocomplete({
@@ -951,6 +957,7 @@ export function BrandMark({
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const src = effectiveUrl && failedUrl !== effectiveUrl ? effectiveUrl : '/brand/vsis-logo-compact.jpg'
 
+  // The bundled logo is a white-backed JPEG: in dark mode give it a deliberate rounded plate rather than a hard white box.
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -960,7 +967,7 @@ export function BrandMark({
       height={343}
       loading="eager"
       onError={() => setFailedUrl(effectiveUrl || '')}
-      className={cn('h-9 w-auto shrink-0 object-contain', className)}
+      className={cn('h-9 w-auto shrink-0 object-contain dark:rounded-md dark:bg-white dark:px-1.5 dark:py-1', className)}
       aria-hidden="true"
     />
   )

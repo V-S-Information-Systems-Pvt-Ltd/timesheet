@@ -281,7 +281,8 @@ export function AppShell({
         <button
           type="button"
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
-          className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          // Touch-only devices have no keyboard to use these with; the account menu still lists them.
+          className="pointer-coarse:hidden flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
         >
           <kbd className="rounded border border-line bg-muted px-1.5 text-xs">?</kbd>
           Keyboard shortcuts
