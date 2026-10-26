@@ -358,7 +358,8 @@ export function Checkbox({
       className={cn('h-4 w-4 shrink-0 accent-primary-600', className)}
     />
   )
-  if (label === undefined) return box
+  // A bare box keeps its 16px look; the wrapping label pads the hit area to 44px on phones.
+  if (label === undefined) return <label className="-m-3.5 inline-flex cursor-pointer p-3.5 md:m-0 md:p-0">{box}</label>
   return (
     <label className="flex min-h-11 cursor-pointer md:min-h-9 items-center gap-2.5 text-sm text-fg-muted">
       {box}

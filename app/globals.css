@@ -59,6 +59,9 @@
   --leave-text: #5b4590;
   --leave-ring: #d4c9ea;
 
+  /* Overlay behind dialogs and the nav drawer; stays dark in both modes. */
+  --scrim: rgb(19 41 75 / 0.45);
+
   --shadow-card-raw: none;
   --shadow-card-hover-raw: none;
 }
@@ -96,6 +99,8 @@
   --leave-surface: #2a2347;
   --leave-text: #b3a2e0;
   --leave-ring: #433a70;
+
+  --scrim: rgb(4 9 18 / 0.7);
 }
 
 @theme inline {
@@ -167,6 +172,7 @@
   --color-leave-surface: var(--leave-surface);
   --color-leave-text: var(--leave-text);
   --color-leave-ring: var(--leave-ring);
+  --color-scrim: var(--scrim);
 
   /* Shadows (raw-var indirection so the .dark block can swap them) */
   --shadow-card: var(--shadow-card-raw);

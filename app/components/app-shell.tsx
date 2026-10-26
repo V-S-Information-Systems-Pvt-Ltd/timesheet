@@ -312,7 +312,7 @@ export function AppShell({
         aria-hidden={!drawerOpen}
         onClick={() => setDrawerOpen(false)}
       >
-        <div className="absolute inset-0 bg-ink/40" />
+        <div className="absolute inset-0 bg-scrim" />
         <aside
           ref={drawerRef}
           role="dialog"
