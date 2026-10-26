@@ -125,6 +125,7 @@ jobs:
           tests/idempotency.int.test.ts
           tests/restore.int.test.ts
           tests/sum-hours.int.test.ts
+          tests/people-visibility.int.test.ts
           tests/password-change-race.int.test.ts
           tests/email-verification.int.test.ts
           tests/parity-tracer.test.ts
