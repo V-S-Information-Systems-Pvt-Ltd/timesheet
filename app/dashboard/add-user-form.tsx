@@ -134,7 +134,7 @@ export default function AddUserForm({
           )}
         </Field>
         <Field label="Status" labelAsText>
-          <div className="rounded-control border border-border bg-card px-3">
+          <div className="rounded-control border border-line bg-card px-3">
             <Checkbox label="Active" checked={active} onChange={(e) => setActive(e.target.checked)} />
           </div>
         </Field>

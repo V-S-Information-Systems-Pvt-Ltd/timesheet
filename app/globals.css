@@ -34,7 +34,7 @@
   --primary-text: var(--primary-text-light);
 
   --card: #ffffff; /* sheet */
-  --border: #c9d3e0; /* control border */
+  --border: #7d8ca3; /* control border: 3:1 on sheet and paper (WCAG 1.4.11) */
   --line: #e1e7ef; /* hairline */
   --fg: #13294b;
   --fg-muted: #55657e;
@@ -76,7 +76,7 @@
   --primary-text: var(--primary-text-dark);
 
   --card: #16243b;
-  --border: #3a4c6b;
+  --border: #647aa0; /* 3:1 on sheet and paper */
   --line: #24344f;
   --fg: #eaf0f7;
   --fg-muted: #9aa8bd;
@@ -258,7 +258,7 @@ body {
   }
   .table-stack tr {
     display: block;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
     border-radius: var(--radius-sheet);
     margin-bottom: 0.75rem;
     padding: 0.25rem 0.75rem;

@@ -116,7 +116,7 @@ function MenuCustomizerBody({ config }: { config: MenuCustomizerConfig }) {
 
   return (
     <>
-      <header className="border-b border-border px-5 py-4">
+      <header className="border-b border-line px-5 py-4">
         <h2 id="menu-customizer-title" className="text-base font-semibold text-fg">Customize menu</h2>
         <p className="text-sm text-fg-muted">Pick a view, or choose exactly which items show in the sidebar. Hidden pages stay reachable by link.</p>
       </header>
@@ -200,7 +200,7 @@ function MenuCustomizerBody({ config }: { config: MenuCustomizerConfig }) {
         <div aria-live="polite" role="status" className="sr-only">{announcement}</div>
       </div>
 
-      <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
+      <footer className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
         <Button type="button" variant="ghost" size="sm" onClick={reset} className="mr-auto">Reset to default</Button>
         <Button type="button" variant="ghost" onClick={() => config.onOpenChange(false)}>Cancel</Button>
         <Button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save menu'}</Button>

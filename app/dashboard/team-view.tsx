@@ -71,7 +71,7 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
     return (
       <div key={u.id} className="space-y-1">
         <div
-          className="flex items-center justify-between rounded-control border border-border bg-card p-3 hover:border-border"
+          className="flex items-center justify-between rounded-control border border-line bg-card p-3 hover:border-border"
           style={{ marginLeft: paddingLeft }}
         >
           <div className="flex items-center gap-2">

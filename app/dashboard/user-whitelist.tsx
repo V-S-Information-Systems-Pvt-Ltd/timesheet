@@ -148,7 +148,7 @@ export default function UserWhitelist({
       actions={<Button variant="secondary" size="sm" onClick={() => window.history.pushState(null, '', dashboardHref('admin', 'add-user'))}><IconPlus className="h-4 w-4" /> Add person</Button>}
     >
       {inactiveUsers.length > 0 && (
-        <section aria-labelledby="inactive-heading" className="border-b border-border bg-warning-surface px-4 py-3">
+        <section aria-labelledby="inactive-heading" className="border-b border-line bg-warning-surface px-4 py-3">
           <h3 id="inactive-heading" className="text-sm font-semibold text-warning-text">
             {inactiveUsers.length === 1 ? '1 account is not active' : `${inactiveUsers.length} accounts are not active`}
           </h3>
@@ -348,7 +348,7 @@ function UserEditor({
           disabled={isSelf && user.is_active}
           title={isSelf && user.is_active ? 'You cannot deactivate your own account' : user.is_active ? 'Deactivate this account' : 'Activate this account'}
           className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
-            user.is_active ? 'bg-success-surface text-success-text ring-success-ring' : 'bg-muted text-fg-muted ring-border hover:bg-border'
+            user.is_active ? 'bg-success-surface text-success-text ring-success-ring' : 'bg-muted text-fg-muted ring-line hover:bg-border'
           }`}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${user.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
@@ -406,7 +406,7 @@ function UserEditor({
         </EditorSection>
 
         {orgAdmin && canHaveScope && !isSelf && (
-          <fieldset className="space-y-2 rounded-control border border-border p-3">
+          <fieldset className="space-y-2 rounded-control border border-line p-3">
             <legend className="px-1 text-sm font-semibold text-fg">Department access</legend>
             <p className="text-xs text-fg-muted">
               {draft.scope.length === 0
@@ -500,7 +500,7 @@ function PasswordReset({ user }: { user: User }) {
               <p id="password-dialog-desc" className="mt-1 text-sm text-fg-muted">
                 Give this to {who}. It is shown only once; they can change it after signing in.
               </p>
-              <output aria-label="Generated password" className="mt-4 block select-all rounded-control border border-border bg-muted px-3 py-2 font-mono text-base tracking-wide text-fg">
+              <output aria-label="Generated password" className="mt-4 block select-all rounded-control border border-line bg-muted px-3 py-2 font-mono text-base tracking-wide text-fg">
                 {generated}
               </output>
               <div className="mt-4 flex gap-2">

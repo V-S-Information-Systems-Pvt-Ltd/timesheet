@@ -137,7 +137,7 @@ export default function HierarchyEditor({
         </div>
 
         <TableFrame className="table-stack rounded-sheet border border-line">
-          <thead className="border-b border-border bg-muted/60">
+          <thead className="border-b border-line bg-muted/60">
             <tr>
               <Th>User</Th>
               <Th>Title</Th>
@@ -146,7 +146,7 @@ export default function HierarchyEditor({
               <Th className="text-right">Action</Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border bg-card">
+          <tbody className="divide-y divide-line bg-card">
             {filteredUsers.map((u) => {
               const edit = getUserEditState(u)
               const managerOptions = reportToOptions(u, users)

@@ -12,8 +12,8 @@ import { cn } from './cn'
 export function SplitPane({ list, detail, className }: { list: ReactNode; detail: ReactNode; className?: string }) {
   return (
     <div className={cn('grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]', className)}>
-      <div className="min-w-0 lg:border-r lg:border-border">{list}</div>
-      <div className="border-t border-border lg:border-t-0">{detail}</div>
+      <div className="min-w-0 lg:border-r lg:border-line">{list}</div>
+      <div className="border-t border-line lg:border-t-0">{detail}</div>
     </div>
   )
 }
@@ -31,7 +31,7 @@ export function ListToolbar({ search, onSearch, placeholder, filters, shown, tot
 }) {
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
         <Input
           type="search"
           placeholder={placeholder}
@@ -133,7 +133,7 @@ export function EditorForm({ label, leading, title, subtitle, status, children, 
 }) {
   return (
     <form className="flex h-full flex-col" onSubmit={(e: FormEvent) => { e.preventDefault(); onSubmit() }} aria-label={label}>
-      <header className="flex items-start gap-3 border-b border-border px-5 py-4">
+      <header className="flex items-start gap-3 border-b border-line px-5 py-4">
         {leading}
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-fg">{title}</h3>
@@ -142,7 +142,7 @@ export function EditorForm({ label, leading, title, subtitle, status, children, 
         {status}
       </header>
       <div className="flex-1 space-y-6 px-5 py-4">{children}</div>
-      <footer className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-5 py-3">
+      <footer className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card px-5 py-3">
         {extraActions && <div className="mr-auto flex items-center gap-2">{extraActions}</div>}
         {dirty && !extraActions && <span className="mr-auto text-xs text-fg-muted">Unsaved changes</span>}
         <Button type="button" variant="ghost" disabled={!dirty || saving} onClick={onDiscard}>Discard</Button>

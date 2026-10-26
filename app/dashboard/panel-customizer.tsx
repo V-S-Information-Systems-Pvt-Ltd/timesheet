@@ -111,8 +111,8 @@ export default function PanelCustomizer<T extends LayoutLike>({
             }}
             className={`flex items-center gap-3 rounded-control border px-3 py-2 transition ${
               tile.enabled
-                ? 'border-border bg-card'
-                : 'border-border bg-muted opacity-60'
+                ? 'border-line bg-card'
+                : 'border-line bg-muted opacity-60'
             }`}
           >
             <Checkbox

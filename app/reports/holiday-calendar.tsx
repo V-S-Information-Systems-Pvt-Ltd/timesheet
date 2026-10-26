@@ -24,7 +24,7 @@ export function MonthGrid({ year, month, locale, cell, large = false }: {
   const lead = (first.getUTCDay() + 6) % 7 // Monday-first
   const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
   return (
-    <div className="rounded-control border border-border p-3">
+    <div className="rounded-control border border-line p-3">
       <div className="mb-2 text-sm font-semibold text-fg">{first.toLocaleString(locale, { month: 'long', year: large ? 'numeric' : undefined, timeZone: 'UTC' })}</div>
       <div className={cn('grid grid-cols-7 text-center', large ? 'gap-1.5 text-sm' : 'gap-0.5 text-xs')}>
         {WEEKDAYS.map(d => <div key={d} className="py-0.5 font-medium text-fg-subtle">{d}</div>)}
@@ -132,7 +132,7 @@ export default function HolidayCalendar() {
         </div>
       </Card>
       <Card title={`Holidays in ${year}`} subtitle={`${list.filter(h => h.mercantile).length} mercantile of ${list.length}`}>
-        <ul className="divide-y divide-border text-sm">
+        <ul className="divide-y divide-line text-sm">
           {list.map(h => (
             <li key={h.date + h.name} className="flex flex-wrap items-center justify-between gap-2 py-2">
               <span>

@@ -713,7 +713,7 @@ export default function EntriesTable({
         <div>
           {readError && <Alert tone="error" className="m-4">{readError} <Button variant="secondary" size="sm" onClick={() => void onChanged()}>Retry entries</Button></Alert>}
           {historyError && <Alert tone="error" className="m-4">{historyError}</Alert>}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
             <span className="text-xs text-fg-muted">
               {historyLoading ? 'Loading filtered history…' : someSelected
                 ? `${selectedIds.size} selected`
@@ -759,7 +759,7 @@ export default function EntriesTable({
           {loading && <LoadingState label="Loading entries…" />}
           {!loading && !readError && timesheets.length === 0 && <EmptyState className="m-5" icon={<IconClock className="h-5 w-5" />} title="No entries found" description="Try another user filter or log an entry." />}
            <table className="w-full text-sm">
-             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-border bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
+             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-line bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
               <tr>
                 <Th className="w-8">
                   <Checkbox
@@ -780,7 +780,7 @@ export default function EntriesTable({
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-line">
               {groupedRows.map(group => (
                 <Fragment key={group.date}>
                   <tr
@@ -903,7 +903,7 @@ export default function EntriesTable({
               ))}
             </tbody>
           </table>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={navigationBusy || page <= 1}>
                   Previous

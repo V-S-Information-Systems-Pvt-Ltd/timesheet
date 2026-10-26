@@ -281,7 +281,7 @@ export function AppShell({
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
           className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
         >
-          <kbd className="rounded border border-border bg-muted px-1.5 text-xs">?</kbd>
+          <kbd className="rounded border border-line bg-muted px-1.5 text-xs">?</kbd>
           Keyboard shortcuts
         </button>
         {inDrawer && <ThemeToggle className="mt-2" />}
@@ -411,7 +411,7 @@ export function AppShell({
         className="w-full max-w-md rounded-sheet border border-line bg-card"
       >
         <div data-shortcuts-modal>
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h3 id="shortcuts-title" className="font-display text-sm font-semibold tracking-tight text-fg">Keyboard shortcuts</h3>
             <IconButton size="sm" label="Close shortcuts" onClick={() => setShortcutsOpen(false)}>
               <IconX className="h-4 w-4" />
@@ -430,7 +430,7 @@ export function AppShell({
                   {items.map((s, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <span className="text-fg-muted">{s.description}</span>
-                      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-fg-muted">{s.keys}</kbd>
+                      <kbd className="rounded border border-line bg-muted px-1.5 py-0.5 text-xs font-medium text-fg-muted">{s.keys}</kbd>
                     </div>
                   ))}
                 </div>

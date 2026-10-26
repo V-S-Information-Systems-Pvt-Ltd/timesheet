@@ -152,7 +152,7 @@ export default function WelcomePage() {
           {message && <Alert tone="success" className="mt-4">{message}</Alert>}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-control bg-muted px-3 py-2.5 text-xs leading-relaxed text-fg-muted ring-1 ring-inset ring-border">
+            <p className="mt-5 rounded-control bg-muted px-3 py-2.5 text-xs leading-relaxed text-fg-muted ring-1 ring-inset ring-line">
               Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}

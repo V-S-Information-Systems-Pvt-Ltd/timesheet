@@ -445,7 +445,7 @@ const ROLE_BADGES: Record<UserRole, string> = {
   co: 'bg-success-surface text-success-text ring-success-ring',
   manager: 'bg-primary-50 text-primary-text ring-primary-100 dark:bg-primary-900/30 dark:ring-primary-900',
   team_lead: 'bg-warning-surface text-warning-text ring-warning-ring',
-  user: 'bg-muted text-fg-muted ring-border',
+  user: 'bg-muted text-fg-muted ring-line',
 }
 
 export function RoleBadge({ role, className }: { role: UserRole; className?: string }) {
@@ -796,7 +796,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-sheet border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
+        'flex flex-col items-center justify-center rounded-sheet border border-dashed border-line bg-muted/60 px-6 py-10 text-center',
         className
       )}
     >
@@ -886,7 +886,7 @@ export function DataTable<T>({
   return (
     <TableFrame className={className} tableClassName={tableClassName}>
       {caption && <caption className="sr-only">{caption}</caption>}
-      <thead className="border-b border-border bg-muted/60">
+      <thead className="border-b border-line bg-muted/60">
         <tr>
           {columns.map((c) => (
             <Th key={c.key} className={cn(alignCls(c.align), c.thClassName)}>
@@ -895,7 +895,7 @@ export function DataTable<T>({
           ))}
         </tr>
       </thead>
-      <tbody className="divide-y divide-border">
+      <tbody className="divide-y divide-line">
         {rows.map((row, i) => (
           <tr key={rowKey(row, i)} className="transition-colors hover:bg-muted/70">
             {columns.map((c) => (
