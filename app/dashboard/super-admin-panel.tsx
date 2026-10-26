@@ -354,15 +354,15 @@ export default function SuperAdminPanel({
           </form>
 
           <AsyncSection loading={domainsLoading} error={domainsError} reload={reloadDomains} skeletonLines={2}>
-          <TableFrame className="rounded-xl border border-border">
-            <thead className="border-b border-border bg-muted/60">
+          <TableFrame className="rounded-sheet border border-line">
+            <thead className="border-b border-line bg-muted/60">
               <tr>
                 <Th>Domain</Th>
                 <Th>Auto-Activate Status</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border bg-card">
+            <tbody className="divide-y divide-line bg-card">
               {domains.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="p-4">
@@ -432,14 +432,14 @@ export default function SuperAdminPanel({
           </form>
 
           <AsyncSection loading={titlesLoading} error={titlesError} reload={reloadTitles} skeletonLines={2}>
-          <TableFrame className="rounded-xl border border-border">
-            <thead className="border-b border-border bg-muted/60">
+          <TableFrame className="rounded-sheet border border-line">
+            <thead className="border-b border-line bg-muted/60">
               <tr>
                 <Th>Title Name</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border bg-card">
+            <tbody className="divide-y divide-line bg-card">
               {titles.map((t) => (
                 <tr key={t} className="hover:bg-muted/50">
                   <Td className="font-medium text-fg">
@@ -473,7 +473,7 @@ export default function SuperAdminPanel({
         {users.length === 0 ? (
           <EmptyState title="No users" className="py-6" />
         ) : (
-          <ul className="max-h-80 divide-y divide-border overflow-y-auto">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto">
             {users.map((u) => (
               <li key={u.id} className="flex items-center justify-between gap-3 py-1.5">
                 <span className="min-w-0 truncate text-sm">
@@ -514,7 +514,7 @@ export default function SuperAdminPanel({
             <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
           </div>
 
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
+          <div className="rounded-control bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s)
             {users.filter(u => !u.is_active).length > 0 && (
@@ -579,7 +579,7 @@ export default function SuperAdminPanel({
           </Field>
 
           {/* Live Preview */}
-          <div className="rounded-xl border border-border bg-muted p-4">
+          <div className="rounded-sheet border border-line bg-muted p-4">
             <div className="text-xs font-semibold text-fg-subtle mb-2">
               Branding Preview
             </div>
@@ -667,7 +667,7 @@ export default function SuperAdminPanel({
             </p>
           </div>
 
-          <div className="border-t border-border pt-5">
+          <div className="border-t border-line pt-5">
             <h3 className="mb-2 text-sm font-semibold text-fg">
               Remove user
             </h3>
@@ -696,7 +696,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="border-t border-border pt-5">
+          <div className="border-t border-line pt-5">
             <h3 className="mb-2 text-sm font-semibold text-fg">
               Remove activity type
             </h3>
@@ -732,7 +732,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
+          <div className="rounded-control bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (

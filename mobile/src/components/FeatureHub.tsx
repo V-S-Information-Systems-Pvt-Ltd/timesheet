@@ -30,9 +30,9 @@ export function FeatureHub({ items, palette }: FeatureHubProps) {
           >
             <View style={styles.iconWrap}>
               {typeof item.icon === 'string' && ICON_NAMES.has(item.icon) ? (
-                <Icon color={palette.primary} name={item.icon as IconName} size={20} />
+                <Icon color={palette.primaryText} name={item.icon as IconName} size={20} />
               ) : (
-                <Text style={[styles.hubIcon, { color: palette.primary }]}>{item.icon}</Text>
+                <Text style={[styles.hubIcon, { color: palette.primaryText }]}>{item.icon}</Text>
               )}
             </View>
             <Text numberOfLines={1} style={[styles.hubLabel, { color: palette.foreground }]}>

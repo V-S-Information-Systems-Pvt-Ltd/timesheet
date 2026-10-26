@@ -228,7 +228,7 @@ function LocalTimeEntryForm({
             />
             {splitPreview && <p id="hours-split-hint" className="mt-1 text-xs text-fg-muted">{splitPreview}</p>}
             {lastEntry && !hours && (
-              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-200 dark:hover:text-primary-200">
+              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 inline-flex min-h-11 items-center text-xs text-primary-text hover:underline md:min-h-0">
                 Use {lastEntry.hours_worked}h from last entry
               </button>
             )}

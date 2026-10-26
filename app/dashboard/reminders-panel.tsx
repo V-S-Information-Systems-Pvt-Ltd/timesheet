@@ -78,7 +78,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       icon={<IconBell className="h-4.5 w-4.5" />}
     >
       {due.length > 0 && (
-        <Alert tone="warning" className="mb-4 rounded-xl p-3.5">
+        <Alert tone="warning" className="mb-4 rounded-sheet p-3.5">
           <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
             <IconAlert className="h-4 w-4" /> Due now ({due.length})
           </p>
@@ -125,7 +125,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
 
       {error && <Alert tone="error" className="mt-3">{error}</Alert>}
 
-      <div className="mt-5 border-t border-border pt-4">
+      <div className="mt-5 border-t border-line pt-4">
         <h3 className="mb-2 text-xs font-semibold text-fg-subtle">Upcoming</h3>
         <AsyncSection loading={loading} error={loadError} reload={reloadReminders} skeletonLines={2}>
         {upcoming.length === 0 ? (
@@ -140,7 +140,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
             {upcoming.map(r => (
               <div
                 key={r.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 transition hover:border-border"
+                className="flex items-center justify-between gap-2 rounded-control border border-line px-3 py-2.5 transition hover:border-border"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm text-fg-muted">{r.message}</div>

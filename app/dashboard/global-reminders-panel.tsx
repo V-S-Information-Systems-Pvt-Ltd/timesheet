@@ -173,7 +173,7 @@ function AdminView() {
       </form>
 
       <AsyncSection loading={loading} error={loadError} reload={reload}>
-      <TableFrame className="mt-4 rounded-lg border border-border" tableClassName="text-sm">
+      <TableFrame className="mt-4 rounded-control border border-line" tableClassName="text-sm">
         <caption className="sr-only">Global reminders</caption>
         <thead className="bg-muted/60">
           <tr>
@@ -183,7 +183,7 @@ function AdminView() {
             <Th className="text-right">Action</Th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-line">
           {rows.length === 0 ? (
             <tr>
               <td colSpan={4} className="p-4">

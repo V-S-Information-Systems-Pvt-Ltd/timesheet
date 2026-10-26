@@ -619,7 +619,7 @@ function ReportsPage() {
             ) : (
               <>
                 <TableFrame className="max-h-96 overflow-auto" tableClassName="text-sm">
-                    <thead className="sticky top-0 border-b border-border bg-muted">
+                    <thead className="sticky top-0 border-b border-line bg-muted">
                       <tr>
                         <Th>Date</Th>
                         <Th>Project</Th>
@@ -628,26 +628,26 @@ function ReportsPage() {
                         <Th>Work Done</Th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
+                    <tbody className="divide-y divide-line">
                       {visibleRows.map(t => (
                         <tr key={t.id} className="transition-colors hover:bg-muted/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                           <Td className="font-medium text-fg">{reportGroupLabel(t, 'project')}</Td>
                           <Td className="text-fg-muted">{reportGroupLabel(t, 'activity')}</Td>
-                          <Td className="text-right tabular-nums">{t.hours_worked}</Td>
+                          <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
                           <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         </tr>
                       ))}
                     </tbody>
                   </TableFrame>
                 {hasMore && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-fg-muted">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-xs text-fg-muted">
                     <div className="space-y-1">
                       <span>
                         Showing {timesheets.length} of {totalCount} entries — totals update as more load.
                       </span>
                       {loadMoreError && (
-                        <p className="text-xs font-medium text-rose-600 dark:text-rose-300">{loadMoreError}</p>
+                        <p className="text-xs font-medium text-danger-text">{loadMoreError}</p>
                       )}
                     </div>
                     <Button variant="secondary" size="sm" onClick={loadMoreTimesheets} disabled={loadingMore}>
@@ -683,7 +683,7 @@ function ReportsPage() {
           >
             <div className="flex items-end gap-6">
               <div>
-                <div className="text-4xl font-bold tabular-nums tracking-tight text-primary-700 dark:text-primary-200">
+                <div className="font-numeral text-5xl font-medium tabular-nums text-primary-text">
                   {fmtHours(sumHours(mySummaryRows))}
                   <span className="ml-1 text-lg font-medium text-fg-muted">hrs</span>
                 </div>
@@ -726,14 +726,14 @@ function ReportsPage() {
               ) : (
                 <div className="space-y-4">
                   <BarChartCard title="Hours per user" data={projectSummaryRows.map(row => ({ label: row.email, hours: row.hours }))} />
-                  <TableFrame className="overflow-x-auto rounded-lg border border-border" tableClassName="text-sm">
+                  <TableFrame className="overflow-x-auto rounded-control border border-line" tableClassName="text-sm">
                     <thead className="bg-muted/60">
                       <tr>
                         <Th>User</Th>
                         <Th className="text-right">Hours</Th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
+                    <tbody className="divide-y divide-line">
                       {projectSummaryRows.map((r, i) => (
                         <tr key={i} className="transition-colors hover:bg-muted/70">
                           <Td className="text-fg-muted">{r.email}</Td>
@@ -842,7 +842,7 @@ function ReportsPage() {
                <Button variant="secondary" size="sm" onClick={exportLast3} disabled={isExporting}>Last 3 (one file)</Button>
                <Button variant="secondary" size="sm" onClick={exportLast3Total} disabled={isExporting}>Last 3 Total</Button>
              </div>
-             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
+             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
                <Field label="Custom Month" className="w-44">
                  <Input type="month" value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} />
                </Field>
@@ -905,7 +905,7 @@ function ReportsPage() {
               <TableFrame>
                 <caption className="sr-only">Hours by comparison period</caption>
                 <thead><tr><Th>Period</Th><Th>Dates</Th><Th className="text-right">Hours</Th></tr></thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-line">
                   <tr><Td>Period A</Td><Td>{compareRows.aLabel}</Td><Td className="text-right tabular-nums">{fmtHours(compareRows.a)}</Td></tr>
                   <tr><Td>Period B</Td><Td>{compareRows.bLabel}</Td><Td className="text-right tabular-nums">{fmtHours(compareRows.b)}</Td></tr>
                 </tbody>

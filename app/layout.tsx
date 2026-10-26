@@ -25,6 +25,15 @@ const publicSans = localFont({
   display: "swap",
 });
 
+const barlow = localFont({
+  src: [
+    { path: "../public/fonts/BarlowSemiCondensed-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../public/fonts/BarlowSemiCondensed-SemiBold.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-barlow",
+  display: "swap",
+});
+
 const geistMono = localFont({
   src: "../public/fonts/GeistMono-Variable.woff2",
   variable: "--font-geist-mono",
@@ -78,12 +87,14 @@ export default async function RootLayout({
     '--primary-700': palette.shades[700],
     '--primary-800': palette.shades[800],
     '--primary-900': palette.shades[900],
+    '--primary-text-light': palette.primaryTextLight,
+    '--primary-text-dark': palette.primaryTextDark,
   } as React.CSSProperties;
 
   return (
     <html
       lang="en"
-      className={`${publicSans.variable} ${geistMono.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
+      className={`${publicSans.variable} ${barlow.variable} ${geistMono.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
       style={brandingStyles}
       suppressHydrationWarning
     >
@@ -93,7 +104,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-700 dark:focus:text-primary-200 focus:shadow-card focus:ring-2 focus:ring-primary-600/25"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-control focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-text focus:ring-2 focus:ring-primary-600/25"
         >
           Skip to content
         </a>

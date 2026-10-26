@@ -57,7 +57,7 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
   const monthName = new Date(`${monthStart}T00:00:00Z`).toLocaleString(undefined, { month: 'long', timeZone: 'UTC' })
 
   return (
-    <section aria-label={`${monthName} logging`} className="mb-4 rounded-xl border border-line bg-card px-4 py-3 shadow-card">
+    <section aria-label={`${monthName} logging`} className="mb-4 rounded-sheet border border-line bg-card px-4 py-3">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
         <h2 className="text-sm font-semibold text-fg">{monthName}</h2>
         <p className="text-sm text-fg-muted" aria-live="polite">
@@ -65,7 +65,7 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
         </p>
         <div className="ml-auto hidden sm:block"><MissingLegend /></div>
       </div>
-      <ol className="grid grid-cols-11 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
+      <ol className="grid grid-cols-7 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
         {days.map(d => {
           const state = cell?.(d.iso, d.weekend) ?? { className: 'text-fg-subtle' }
           const label = `${d.iso}${state.title ? `: ${state.title}` : ''}`
@@ -75,7 +75,7 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
               <span className="block pt-0.5">{d.day}</span>
             </span>
           )
-          const base = cn('block w-full rounded py-1', state.className, d.iso === today && 'outline outline-2 outline-offset-1 outline-primary-600')
+          const base = cn('block min-h-11 w-full rounded-control py-1.5 sm:min-h-0 sm:py-1', state.className, d.iso === today && 'outline outline-2 outline-offset-1 outline-primary-600')
           return (
             <li key={d.iso}>
               {state.missing && d.iso >= minLogDate ? (

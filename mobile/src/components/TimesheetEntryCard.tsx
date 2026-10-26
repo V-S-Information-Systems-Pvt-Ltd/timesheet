@@ -171,7 +171,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
             {isDuplicating ? (
               <ActivityIndicator color={palette.primary} size="small" />
             ) : (
-              <Icon color={palette.primary} name="plus" size={16} />
+              <Icon color={palette.primaryText} name="plus" size={16} />
             )}
           </Pressable>
         ) : null}

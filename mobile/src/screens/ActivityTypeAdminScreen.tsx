@@ -248,7 +248,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
               onPress={() => handleOpenEdit(item)}
               style={[adminStyles.iconButton, isOffline && adminStyles.disabled]}
             >
-              <Icon color={palette.primary} name="edit" size={18} />
+              <Icon color={palette.primaryText} name="edit" size={18} />
             </PressableScale>
             <PressableScale
               accessibilityLabel={`Delete ${item.name}`}

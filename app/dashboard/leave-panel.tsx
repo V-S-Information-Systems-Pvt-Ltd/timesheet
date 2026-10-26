@@ -153,7 +153,7 @@ export default function LeavePanel({
       {error && <Alert tone="error" className="mt-3">{error}</Alert>}
 
       {variant === 'admin' && (
-        <div className="mt-6 border-t border-border pt-5">
+        <div className="mt-6 border-t border-line pt-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Input
               type="month"
@@ -181,7 +181,7 @@ export default function LeavePanel({
             />
           ) : (
             <DataTable
-              className="rounded-lg border border-border"
+              className="rounded-control border border-line"
               caption="Monthly leave summary"
               rows={summary}
               rowKey={(_, i) => String(i)}
@@ -197,7 +197,7 @@ export default function LeavePanel({
         </div>
       )}
 
-      <div className="mt-5 border-t border-border pt-4">
+      <div className="mt-5 border-t border-line pt-4">
         <h3 className="mb-2 text-xs font-semibold text-fg-subtle">Marked Days</h3>
         <AsyncSection loading={loading} error={loadError} reload={reloadLeaves} skeletonLines={2}>
         {leafRows.length === 0 ? (
@@ -209,7 +209,7 @@ export default function LeavePanel({
           />
         ) : (
           <DataTable
-            className="rounded-lg border border-border"
+            className="rounded-control border border-line"
             caption="Marked leave days"
             rows={leafRows}
             rowKey={l => l.id}

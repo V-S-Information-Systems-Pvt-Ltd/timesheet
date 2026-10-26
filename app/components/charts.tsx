@@ -27,7 +27,7 @@ export function BarChartCard({ title, data, description }: HoursChartProps) {
   const shown = data.slice(0, 12)
   if (!data.length) return <EmptyState title="No hours to plot" />
   if (data.length === 1) {
-    return <div className="rounded-lg bg-muted p-4 text-sm text-fg"><span className="font-medium">{data[0].label}</span>: {fmtHours(data[0].hours)} hrs</div>
+    return <div className="rounded-control bg-muted p-4 text-sm text-fg"><span className="font-medium">{data[0].label}</span>: {fmtHours(data[0].hours)} hrs</div>
   }
   return (
     <figure className="min-w-0" aria-labelledby={titleId}>
@@ -73,7 +73,7 @@ export function TrendChart({ title, data, description }: HoursChartProps) {
           <table className="w-full text-left">
             <caption className="sr-only">{title}</caption>
             <thead><tr><th scope="col" className="py-2">Date</th><th scope="col" className="py-2 text-right">Hours</th></tr></thead>
-            <tbody>{data.map(point => <tr key={point.label} className="border-t border-border"><td className="py-2">{point.label}</td><td className="py-2 text-right tabular-nums">{fmtHours(point.hours)}</td></tr>)}</tbody>
+            <tbody>{data.map(point => <tr key={point.label} className="border-t border-line"><td className="py-2">{point.label}</td><td className="py-2 text-right tabular-nums">{fmtHours(point.hours)}</td></tr>)}</tbody>
           </table>
         </div>
       </details>

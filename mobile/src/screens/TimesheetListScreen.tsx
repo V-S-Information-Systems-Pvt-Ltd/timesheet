@@ -720,7 +720,7 @@ export function TimesheetListScreen({
           onPress={handleExitSelection}
           style={styles.cancelSelectionBtn}
         >
-          <Text style={[styles.cancelSelectionText, { color: palette.primary }]}>Done</Text>
+          <Text style={[styles.cancelSelectionText, { color: palette.primaryText }]}>Done</Text>
         </Pressable>
       );
     }
@@ -761,7 +761,7 @@ export function TimesheetListScreen({
         </PressableScale>
       </View>
     );
-  }, [isSelectionMode, entries.length, handleExitSelection, handleRefresh, isRefreshing, onLogTime, palette.foreground, palette.primary, palette.onPrimary]);
+  }, [isSelectionMode, entries.length, handleExitSelection, handleRefresh, isRefreshing, onLogTime, palette.foreground, palette.primary, palette.primaryText, palette.onPrimary]);
 
   const listFooter = useMemo(() => {
     if (!isLoadingMore) return null;
@@ -793,7 +793,7 @@ export function TimesheetListScreen({
           ]}
         >
           <View style={styles.filterBannerContent}>
-            <Icon name="team" size={16} color={palette.primary} />
+            <Icon name="team" size={16} color={palette.primaryText} />
             <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
               Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
             </Text>
@@ -805,7 +805,7 @@ export function TimesheetListScreen({
               onPress={onClearFilterUser}
               style={styles.clearFilterBtn}
             >
-              <Text style={[styles.clearFilterText, { color: palette.primary }]}>Clear</Text>
+              <Text style={[styles.clearFilterText, { color: palette.primaryText }]}>Clear</Text>
             </PressableScale>
           ) : null}
         </View>
@@ -818,7 +818,7 @@ export function TimesheetListScreen({
           onPress={openMemberPicker}
           style={[styles.memberBtn, { borderColor: palette.controlBorder }]}
         >
-          <Icon name="team" size={16} color={palette.primary} />
+          <Icon name="team" size={16} color={palette.primaryText} />
           <Text style={[styles.memberBtnText, { color: palette.foreground }]}>
             Member: {filterUser ? filterUser.name || filterUser.email : 'All / Me'}
           </Text>
@@ -856,7 +856,7 @@ export function TimesheetListScreen({
 
       {filter === 'custom' && customRange.from && customRange.to ? (
         <View style={[styles.rangeSummary, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}>
-          <Icon name="calendar" size={14} color={palette.primary} />
+          <Icon name="calendar" size={14} color={palette.primaryText} />
           <Text style={[styles.rangeSummaryText, { color: palette.foreground }]}>
             {`${formatDatePreview(customRange.from)} – ${formatDatePreview(customRange.to)}`}
           </Text>
@@ -867,7 +867,7 @@ export function TimesheetListScreen({
             onPress={openRangePicker}
             style={styles.rangeSummaryAction}
           >
-            <Text style={[styles.rangeSummaryActionText, { color: palette.primary }]}>Change</Text>
+            <Text style={[styles.rangeSummaryActionText, { color: palette.primaryText }]}>Change</Text>
           </Pressable>
         </View>
       ) : null}
@@ -881,7 +881,7 @@ export function TimesheetListScreen({
             onPress={handleSelectAll}
             style={styles.toolbarSelectAll}
           >
-            <Text style={[styles.toolbarSelectAllText, { color: palette.primary }]}>
+            <Text style={[styles.toolbarSelectAllText, { color: palette.primaryText }]}>
               {selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
             </Text>
           </Pressable>
@@ -902,11 +902,11 @@ export function TimesheetListScreen({
                   onPress={handleBulkEdit}
                   style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
                 >
-                  <Icon color={selectedIds.size > 0 ? palette.primary : palette.muted} name="edit" size={14} />
+                  <Icon color={selectedIds.size > 0 ? palette.primaryText : palette.muted} name="edit" size={14} />
                   <Text
                     style={[
                       styles.toolbarBtnText,
-                      { color: selectedIds.size > 0 ? palette.primary : palette.muted },
+                      { color: selectedIds.size > 0 ? palette.primaryText : palette.muted },
                     ]}
                   >
                     Edit ({selectedIds.size})
@@ -920,11 +920,11 @@ export function TimesheetListScreen({
                   onPress={handleBulkDuplicate}
                   style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
                 >
-                  <Icon color={selectedIds.size > 0 ? palette.primary : palette.muted} name="plus" size={14} />
+                  <Icon color={selectedIds.size > 0 ? palette.primaryText : palette.muted} name="plus" size={14} />
                   <Text
                     style={[
                       styles.toolbarBtnText,
-                      { color: selectedIds.size > 0 ? palette.primary : palette.muted },
+                      { color: selectedIds.size > 0 ? palette.primaryText : palette.muted },
                     ]}
                   >
                     Copy ({selectedIds.size})
@@ -999,7 +999,7 @@ export function TimesheetListScreen({
                 onPress={() => setShowAllBatchErrors((previous) => !previous)}
                 style={styles.batchReportAction}
               >
-                <Text style={[styles.batchReportActionText, { color: palette.primary }]}>
+                <Text style={[styles.batchReportActionText, { color: palette.primaryText }]}>
                   {showAllBatchErrors
                     ? 'Show fewer'
                     : `Show all ${batchReport.errors.length} reasons`}
@@ -1016,7 +1016,7 @@ export function TimesheetListScreen({
               }}
               style={styles.batchReportAction}
             >
-              <Text style={[styles.batchReportActionText, { color: palette.primary }]}>Dismiss</Text>
+              <Text style={[styles.batchReportActionText, { color: palette.primaryText }]}>Dismiss</Text>
             </Pressable>
           </View>
         </View>

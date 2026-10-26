@@ -172,7 +172,7 @@ export function PrivilegedReportsScreen({
       {filterUser ? (
         <View style={[styles.filterBanner, { borderColor: palette.hairline }]}>
           <View style={styles.filterBannerContent}>
-            <Icon name="team" size={16} color={palette.primary} />
+            <Icon name="team" size={16} color={palette.primaryText} />
             <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
               Showing <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
             </Text>
@@ -184,7 +184,7 @@ export function PrivilegedReportsScreen({
               onPress={onClearFilterUser}
               style={styles.clearFilterBtn}
             >
-              <Text style={[styles.clearFilterText, { color: palette.primary }]}>Show everyone</Text>
+              <Text style={[styles.clearFilterText, { color: palette.primaryText }]}>Show everyone</Text>
             </PressableScale>
           ) : null}
         </View>

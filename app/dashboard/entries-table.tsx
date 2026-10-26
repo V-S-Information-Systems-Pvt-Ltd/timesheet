@@ -704,7 +704,7 @@ export default function EntriesTable({
            <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleEditLast} data-shortcut="edit-last">
              <IconPencil className="h-3.5 w-3.5" /> Edit Last
            </Button>
-           <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" data-shortcut="undo-last">
+           <Button variant="ghost" size="sm" disabled={!readContext.ready || !today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleUndoLast} className="text-danger-text hover:bg-danger-surface hover:text-danger-text" data-shortcut="undo-last">
              <IconTrash className="h-3.5 w-3.5" /> Undo Last
            </Button>
          </>
@@ -713,7 +713,7 @@ export default function EntriesTable({
         <div>
           {readError && <Alert tone="error" className="m-4">{readError} <Button variant="secondary" size="sm" onClick={() => void onChanged()}>Retry entries</Button></Alert>}
           {historyError && <Alert tone="error" className="m-4">{historyError}</Alert>}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
             <span className="text-xs text-fg-muted">
               {historyLoading ? 'Loading filtered history…' : someSelected
                 ? `${selectedIds.size} selected`
@@ -759,7 +759,7 @@ export default function EntriesTable({
           {loading && <LoadingState label="Loading entries…" />}
           {!loading && !readError && timesheets.length === 0 && <EmptyState className="m-5" icon={<IconClock className="h-5 w-5" />} title="No entries found" description="Try another user filter or log an entry." />}
            <table className="w-full text-sm">
-             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-border bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
+             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-line bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
               <tr>
                 <Th className="w-8">
                   <Checkbox
@@ -780,7 +780,7 @@ export default function EntriesTable({
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-line">
               {groupedRows.map(group => (
                 <Fragment key={group.date}>
                   <tr
@@ -799,7 +799,7 @@ export default function EntriesTable({
                     const canEdit = canModifyRow(t)
                     if (editingId === t.id) {
                       return (
-                        <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 dark:text-primary-200">
+                        <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 text-primary-text">
                           <td colSpan={8} className="p-3">
                             <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
                               <Field label="Date" className="w-36" error={editFieldErrors.logDate?.[0]}>
@@ -859,7 +859,7 @@ export default function EntriesTable({
                           {t.customer && <div className="text-xs">Customer: {t.customer}</div>}
                           {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
                         </Td>
-                        <Td className="text-right tabular-nums">{t.hours_worked}</Td>
+                        <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
                         <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         <Td className="text-right relative">
                           {canDuplicateRow(t) ? (
@@ -903,7 +903,7 @@ export default function EntriesTable({
               ))}
             </tbody>
           </table>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={navigationBusy || page <= 1}>
                   Previous

@@ -105,7 +105,7 @@ export function Menu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={label}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-fg-muted hover:bg-muted disabled:opacity-50 md:min-h-9 md:min-w-9"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control text-fg-muted hover:bg-muted disabled:opacity-50 md:min-h-9 md:min-w-9"
         disabled={disabled || items.length === 0}
         onClick={() => {
           initialIndex.current = 0
@@ -131,7 +131,7 @@ export function Menu({
           id={menuId}
           role="menu"
           aria-labelledby={triggerId}
-          className="fixed z-[60] flex w-44 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-y-auto overscroll-contain rounded-lg border border-border bg-card py-1 shadow-card"
+          className="fixed z-[60] flex w-44 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-y-auto overscroll-contain rounded-control border border-border bg-card py-1"
           onKeyDown={(event) => {
             const current = itemRefs.current.findIndex(item => item === document.activeElement)
             if (event.key === 'Escape') {

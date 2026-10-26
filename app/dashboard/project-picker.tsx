@@ -138,7 +138,7 @@ export default function ProjectPicker({
           id={listBoxId}
           role="listbox"
           aria-label="Projects"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto overscroll-contain rounded-lg border border-border bg-card py-1 shadow-card"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto overscroll-contain rounded-control border border-border bg-card py-1"
         >
           {matches.length === 0 ? (
             <li role="option" aria-selected="false" aria-disabled="true" className="px-3 py-2 text-sm text-fg-muted">
@@ -160,7 +160,7 @@ export default function ProjectPicker({
                   onClick={() => choose(p.id)}
                   className={cn(
                     'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
-                    i === activeIndex && 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200',
+                    i === activeIndex && 'bg-primary-50 text-primary-text dark:bg-primary-900/30',
                     p.id === value && 'font-medium'
                   )}
                 >
