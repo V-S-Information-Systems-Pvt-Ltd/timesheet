@@ -248,8 +248,8 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 Controls how far back regular users can log or edit timesheets. Administrators are always exempt.
               </Text>
 
-              {errorMessage ? <Text style={[styles.messageText, { color: palette.error }]}>{errorMessage}</Text> : null}
-              {successMessage ? <Text style={[styles.messageText, { color: palette.loggedText }]}>{successMessage}</Text> : null}
+              {errorMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[styles.messageText, { color: palette.error }]}>{errorMessage}</Text> : null}
+              {successMessage ? <Text accessibilityLiveRegion="polite" style={[styles.messageText, { color: palette.loggedText }]}>{successMessage}</Text> : null}
 
               <Text style={[adminStyles.label, { color: palette.muted }]}>Policy mode</Text>
               <View style={adminStyles.chipRow}>
