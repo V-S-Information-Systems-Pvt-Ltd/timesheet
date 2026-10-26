@@ -1,7 +1,7 @@
 import { derivePalette, getContrastRatio, type BrandPalette } from '@/lib/branding'
 
 export interface WebPalette extends BrandPalette {
-  /** Primary clamped to 4.5:1 on sheet, paper and tint; for primary-coloured text and icons. */
+  /** Primary clamped to 4.5:1 on sheet, paper, muted and tint; for primary-coloured text and icons. */
   primaryTextLight: string
   primaryTextDark: string
 }
@@ -26,9 +26,9 @@ function readableOn(hex: string, surfaces: string[], toward: Rgb): string {
   return toHex(toward)
 }
 
-// Timecard surfaces; keep in sync with the light/dark tokens in globals.css.
-const LIGHT_SURFACES = ['#FFFFFF', '#F3F6F9']
-const DARK_SURFACES = ['#16243B', '#0E1A2E']
+// Timecard sheet, paper and muted surfaces; keep in sync with the light/dark tokens in globals.css.
+const LIGHT_SURFACES = ['#FFFFFF', '#F3F6F9', '#EDF1F6']
+const DARK_SURFACES = ['#16243B', '#0E1A2E', '#1D2D49']
 
 /** Web presentation of the workspace palette: the timecard shades plus contrast-clamped text colours. */
 export function deriveWebPalette(primaryColor?: string | null): WebPalette {

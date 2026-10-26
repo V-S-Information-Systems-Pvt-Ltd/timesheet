@@ -11,13 +11,13 @@ describe('Timecard web presentation', () => {
     expect(deriveWebPalette('invalid')).toEqual(palette)
   })
 
-  it('clamps primary text to 4.5:1 on sheet, paper and tint in both modes', () => {
+  it('clamps primary text to 4.5:1 on sheet, paper, muted and tint in both modes', () => {
     for (const hex of ['#1E73BE', '#4F46E5', '#0E7490']) {
       const p = deriveWebPalette(hex)
-      for (const bg of ['#FFFFFF', '#F3F6F9', p.shades[50]]) {
+      for (const bg of ['#FFFFFF', '#F3F6F9', '#EDF1F6', p.shades[50]]) {
         expect(getContrastRatio(p.primaryTextLight, bg)).toBeGreaterThanOrEqual(4.5)
       }
-      for (const bg of ['#16243B', '#0E1A2E']) {
+      for (const bg of ['#16243B', '#0E1A2E', '#1D2D49']) {
         expect(getContrastRatio(p.primaryTextDark, bg)).toBeGreaterThanOrEqual(4.5)
       }
     }

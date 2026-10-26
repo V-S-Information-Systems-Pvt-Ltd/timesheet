@@ -29,8 +29,8 @@
   --primary-800: #194a77;
   --primary-900: #1a3a58;
   /* Primary-coloured text and icons, clamped to 4.5:1 (layout.tsx sets both). */
-  --primary-text-light: #1e73be;
-  --primary-text-dark: #75acd9;
+  --primary-text-light: #1d6eb6;
+  --primary-text-dark: #629dd2;
   --primary-text: var(--primary-text-light);
 
   --card: #ffffff; /* sheet */
