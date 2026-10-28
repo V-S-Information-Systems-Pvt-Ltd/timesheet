@@ -15,10 +15,10 @@ import { dataClient } from '@/lib/data/client'
 import { ActivityType, LeaveEntry, Project, Timesheet, User } from '../types'
 import { useAsyncData } from '../hooks'
 import { useAppNav } from '@/app/components/use-app-nav'
-import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, PageHeader, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
+import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Menu, PageHeader, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
-import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
+import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconChevronDown, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { afterOfficeHours, expectedHours, leaveHours, monthEndOffset, monthStartOffset, presetRange, toISODate, todayISO, workingDays, type Preset } from '@vsis/core'
 import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
@@ -60,12 +60,20 @@ const REPORT_DEFAULTS: Record<string, string> = {
   customEnd: '',
   project: 'all',
   entryType: 'all', activityCode: 'all', groupBy: 'user',
-  user: 'me',
+  user: 'all',
   summary: '',
   compareProject: '',
   compareA: 'this',
   compareB: 'last',
-  month: '',
+}
+
+const TAB_SUBTITLES: Record<string, string> = {
+  myhours: 'Your logged hours against what the period expects.',
+  summaries: 'Your total for the period, and hours per person on a project.',
+  reports: 'Team totals for the filters below, with CSV exports.',
+  compare: "One project's hours across two periods.",
+  missing: 'Weekdays this month with no entry and no leave.',
+  calendar: 'Mercantile holidays for the year.',
 }
 
 function ReportsPage() {
@@ -113,7 +121,7 @@ function ReportsPage() {
   const [customStart, setCustomStart] = useState(initialParams.get('customStart') ?? '')
   const [customEnd, setCustomEnd] = useState(initialParams.get('customEnd') ?? '')
   const [projectFilter, setProjectFilter] = useState(initialParams.get('project') ?? 'all')
-  const [userFilter, setUserFilter] = useState<'me' | 'all' | string>(initialParams.get('user') ?? 'me')
+  const [userFilter, setUserFilter] = useState<'me' | 'all' | string>(initialParams.get('user') ?? 'all')
   const [entryType, setEntryType] = useState<EntryType | 'legacy' | undefined>(() => { const value = initialParams.get('entryType'); return isEntryType(value) || value === 'legacy' ? value : undefined })
   const [activityCode, setActivityCode] = useState<ActivityCode | undefined>(() => { const value = initialParams.get('activityCode'); return isActivityCode(value) ? value : undefined })
   const [groupBy, setGroupBy] = useState<'user' | 'project' | 'activity' | 'type'>('user')
@@ -121,7 +129,6 @@ function ReportsPage() {
   const [compareProject, setCompareProject] = useState(initialParams.get('compareProject') ?? '')
   const [compareA, setCompareA] = useState<Preset>(presetFromUrl('compareA'))
   const [compareB, setCompareB] = useState<Preset>(presetFromUrl('compareB'))
-  const [customMonth, setCustomMonth] = useState(initialParams.get('month') ?? '')
   const [lastExport, setLastExport] = useState<{ filename: string; url: string } | null>(null)
 
   const [timesheetsError, setTimesheetsError] = useState<string | null>(null)
@@ -149,7 +156,6 @@ function ReportsPage() {
       compareProject,
       compareA,
       compareB,
-      month: customMonth,
     }
     for (const [key, val] of Object.entries(desired)) {
       if (val === '' || val === REPORT_DEFAULTS[key]) params.delete(key)
@@ -161,7 +167,7 @@ function ReportsPage() {
     }
   }, [
     preset, customStart, customEnd, projectFilter, userFilter, summaryProject, entryType, activityCode, groupBy,
-    compareProject, compareA, compareB, customMonth, searchParams, router,
+    compareProject, compareA, compareB, searchParams, router,
   ])
 
   useEffect(() => {
@@ -364,16 +370,6 @@ function ReportsPage() {
     }
   }
 
-  const exportCustomMonth = () => {
-    if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
-    const start = customMonth + '-01'
-    const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
-    runExport(
-      `/api/v1/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
-      `report_${customMonth}.csv`
-    )
-  }
-
   const { data: groupedTotals, loading: groupedLoading, error: groupedError } = useReportData<Array<{ label: string; hours: number; entries: number }>>(
     async () => {
       if (!profile) return { data: [], error: null }
@@ -483,24 +479,51 @@ function ReportsPage() {
   if (loading) return <LoadingState fullscreen />
   if (!profile) return null
 
-  const presetSelect = (
-    <DateRangePicker
-      preset={preset}
-      onPresetChange={setPreset}
-      customStart={customStart}
-      customEnd={customEnd}
-      onCustomStartChange={setCustomStart}
-      onCustomEndChange={setCustomEnd}
-      range={range}
-    />
-  )
-
   const projectSelect = (value: string, onChange: (v: string) => void, allLabel = 'All Projects') => (
-    <Select aria-label="Project filter" value={value} onChange={(e) => onChange(e.target.value)} className="w-auto max-w-full">
+    <Select value={value} onChange={(e) => onChange(e.target.value)} className="w-72 max-w-full">
       <option value="all">{allLabel}</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
     </Select>
   )
+
+  // One filter bar per tab: every control above the results it scopes, instead
+  // of period and project pickers repeated inside each card.
+  const showFilters = tab === 'myhours' || tab === 'summaries' || (tab === 'reports' && isReportRole)
+  const filterBar = (
+    <div className="mb-4 flex flex-wrap items-end gap-3 [&>*]:min-w-0 [&>*]:max-w-full">
+      <div>
+        <span className="mb-1.5 block text-xs font-semibold text-fg-muted">Period</span>
+        <DateRangePicker
+          preset={preset}
+          onPresetChange={setPreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onCustomStartChange={setCustomStart}
+          onCustomEndChange={setCustomEnd}
+          range={range}
+        />
+      </div>
+      <Field label="Project">{projectSelect(projectFilter, setProjectFilter)}</Field>
+      {tab === 'reports' && (
+        <Field label="User">
+          <Select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="w-auto max-w-full">
+            <option value="all">All Users</option>
+            <option value="me">Me</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+          </Select>
+        </Field>
+      )}
+      <Field label="Type"><Select value={entryType ?? 'all'} onChange={e => { const value = e.target.value; setEntryType(isEntryType(value) || value === 'legacy' ? value : undefined); setActivityCode(undefined) }}>
+        <option value="all">All Types</option>{ENTRY_TYPES.map(type => <option key={type} value={type}>{ENTRY_TYPE_LABELS[type]}</option>)}<option value="legacy">Legacy</option>
+      </Select></Field>
+      <Field label="Activity"><Select value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)} disabled={entryType === 'legacy'}>
+        <option value="all">All Activities</option>{activityOptions.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+      </Select></Field>
+    </div>
+  )
+
+  const variance = workSummary.entered - workSummary.expected
+  const groupedTotal = (groupedTotals ?? []).reduce((acc, b) => ({ hours: acc.hours + Number(b.hours), entries: acc.entries + b.entries }), { hours: 0, entries: 0 })
 
   return (
     <AppShell
@@ -517,64 +540,74 @@ function ReportsPage() {
     >
       <PageHeader
         title={tabLabel}
-        subtitle="Hours, summaries, comparisons, and CSV exports."
+        subtitle={TAB_SUBTITLES[tab]}
         actions={
-          <Button variant="secondary" onClick={exportVisible} disabled={isExporting}>
-            <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export Current View'}
-          </Button>
+          tab === 'myhours' ? (
+            <Button variant="secondary" onClick={exportVisible} disabled={isExporting}>
+              <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export CSV'}
+            </Button>
+          ) : tab === 'reports' && isReportRole ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Menu
+                label="More exports"
+                disabled={isExporting}
+                trigger={<span className="flex items-center gap-1 px-3 text-sm font-semibold text-fg">More exports <IconChevronDown className="h-4 w-4" /></span>}
+                items={[
+                  { label: 'This month, all users', onSelect: () => exportMonth(0) },
+                  { label: 'Last month, all users', onSelect: () => exportMonth(-1) },
+                  { label: '2 months ago', onSelect: () => exportMonth(-2) },
+                  { label: '3 months ago', onSelect: () => exportMonth(-3) },
+                  { label: 'Last 3 months, one file', onSelect: exportLast3 },
+                  { label: 'Last 3 months, totals by user', onSelect: () => void exportLast3Total() },
+                ]}
+              />
+              <Button onClick={exportVisible} disabled={isExporting}>
+                <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Type"><Select value={entryType ?? 'all'} onChange={e => { const value = e.target.value; setEntryType(isEntryType(value) || value === 'legacy' ? value : undefined); setActivityCode(undefined) }}>
-          <option value="all">All Types</option>{ENTRY_TYPES.map(type => <option key={type} value={type}>{ENTRY_TYPE_LABELS[type]}</option>)}<option value="legacy">Legacy</option>
-        </Select></Field>
-        <Field label="Activity"><Select value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)} disabled={entryType === 'legacy'}>
-          <option value="all">All Activities</option>{activityOptions.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
-        </Select></Field>
-      </div>
+      {showFilters && filterBar}
+
+      {lastExport && (tab === 'myhours' || tab === 'reports') && (
+        <Alert tone="success" className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="flex items-center gap-2">
+            <IconCheckCircle className="h-4.5 w-4.5" />
+            Last export: <span className="font-medium">{lastExport.filename}</span>
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => runExport(lastExport.url, lastExport.filename)}>
+            Download again
+          </Button>
+        </Alert>
+      )}
 
       {tab === 'myhours' && (
         <div className="space-y-4">
-          <DateRangePicker
-            quickChips
-            preset={preset}
-            onPresetChange={setPreset}
-            customStart={customStart}
-            customEnd={customEnd}
-            onCustomStartChange={setCustomStart}
-            onCustomEndChange={setCustomEnd}
-            range={range}
+          <Checkbox
+            label="Count after-office hours (above 8h per day)"
+            checked={countAfterOffice}
+            onChange={e => setCountAfterOffice(e.target.checked)}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Checkbox
-              label="Count after-office hours (above 8h per day)"
-              checked={countAfterOffice}
-              onChange={e => setCountAfterOffice(e.target.checked)}
-            />
-          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Expected hours" value={`${fmtHours(workSummary.expected)} hrs`} sub="Weekdays excl. mercantile holidays × 8h" icon={<IconCalendar className="h-5 w-5" />} accent="blue" />
             <StatCard
-              label={hasMore ? 'Entered hours (loaded rows)' : 'Entered hours'}
-              value={`${fmtHours(workSummary.entered)} hrs`}
-              sub={`${fmtHours(workSummary.logged)}h logged + ${fmtHours(workSummary.leave)}h leave · ${workSummary.entered >= workSummary.expected ? '+' : ''}${fmtHours(workSummary.entered - workSummary.expected)}h vs expected`}
+              label={hasMore ? 'Logged hours (loaded rows)' : 'Logged hours'}
+              value={`${fmtHours(workSummary.logged)} hrs`}
+              sub={countAfterOffice
+                ? `${fmtHours(workSummary.logged - workSummary.extra)}h regular · ${fmtHours(workSummary.extra)}h after office`
+                : `+ ${fmtHours(workSummary.leave)}h leave`}
               icon={<IconClock className="h-5 w-5" />}
             />
-            {countAfterOffice && (
-              <StatCard label="After-office hours" value={`${fmtHours(workSummary.extra)} hrs`} sub={`Regular: ${fmtHours(workSummary.logged - workSummary.extra)}h`} icon={<IconClock className="h-5 w-5" />} accent="amber" />
-            )}
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label={hasMore ? 'Logged hours (loaded rows)' : 'Logged hours'} value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
-            <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
             <StatCard
-              label="Period"
-              value={range.start}
-              sub={`→ ${range.end}`}
-              icon={<IconCalendar className="h-5 w-5" />}
-              accent="amber"
+              label="Against expected"
+              value={`${variance >= 0 ? '+' : ''}${fmtHours(variance)} hrs`}
+              sub="Logged plus leave, minus expected"
+              icon={<IconScale className="h-5 w-5" />}
+              accent={variance >= 0 ? 'green' : 'amber'}
             />
+            <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
           </div>
 
           {!timesheetsLoading && !timesheetsError && trendRows.length > 0 && (
@@ -588,7 +621,6 @@ function ReportsPage() {
             subtitle={`${visibleRows.length} entr${visibleRows.length === 1 ? 'y' : 'ies'} in selected period`}
             icon={<IconClock className="h-4.5 w-4.5" />}
             bodyClassName="p-0"
-            actions={projectSelect(projectFilter, setProjectFilter)}
           >
             {timesheetsLoading && timesheets.length === 0 ? (
               <LoadingState label="Loading entries…" />
@@ -659,17 +691,6 @@ function ReportsPage() {
             )}
           </Card>
 
-          {lastExport && (
-            <Alert tone="success" className="flex flex-wrap items-center justify-between gap-3">
-              <span className="flex items-center gap-2">
-                <IconCheckCircle className="h-4.5 w-4.5" />
-                Last export: <span className="font-medium">{lastExport.filename}</span>
-              </span>
-              <Button variant="secondary" size="sm" onClick={() => runExport(lastExport.url, lastExport.filename)}>
-                Download again
-              </Button>
-            </Alert>
-          )}
         </div>
       )}
 
@@ -679,7 +700,6 @@ function ReportsPage() {
             title="My Summary"
             subtitle={`${range.start} → ${range.end}`}
             icon={<IconUsers className="h-4.5 w-4.5" />}
-            actions={<div className="flex flex-wrap items-center gap-2">{presetSelect}{projectSelect(projectFilter, setProjectFilter)}</div>}
           >
             <div className="flex items-end gap-6">
               <div>
@@ -702,16 +722,15 @@ function ReportsPage() {
 
           <Card
             title="Project Summary"
-            subtitle="Hours per user on a project"
+            subtitle="Hours per user on a project in the period"
             icon={<IconChart className="h-4.5 w-4.5" />}
-          >
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              {presetSelect}
-              <Select aria-label="Summary project" value={summaryProject} onChange={(e) => setSummaryProject(e.target.value)} className="w-auto">
+            actions={
+              <Select aria-label="Summary project" value={summaryProject} onChange={(e) => setSummaryProject(e.target.value)} className="w-auto max-w-full">
                 <option value="">Select Project…</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
-            </div>
+            }
+          >
             {summaryProject ? (
               projectSummaryLoading ? (
                 <LoadingState label="Loading summary…" />
@@ -759,99 +778,31 @@ function ReportsPage() {
       )}
 
       {tab === 'reports' && isReportRole && (
-        <div className="space-y-6">
-          <Card
-            title="Group Report"
-            subtitle="Export filtered hours for all users"
-            icon={<IconUsers className="h-4.5 w-4.5" />}
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                {presetSelect}
-                {projectSelect(projectFilter, setProjectFilter)}
-                <Select aria-label="User filter" value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="w-auto">
-                  <option value="all">All Users</option>
-                  <option value="me">Me</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-                </Select>
-              </div>
-            }
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-fg-muted">
-                 {hasMore ? 'Loaded total:' : 'Total:'} <strong className="tabular-nums text-fg">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
-                  across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
-                  {hasMore ? ' (load all pages for the full-period total; CSV export is always complete)' : ''}
-                </p>
-               <Button variant="success" onClick={exportVisible} disabled={isExporting}>
-                 <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export CSV'}
-               </Button>
-             </div>
-           </Card>
- 
-           <Card title="Grouped totals" subtitle="Complete scoped totals, including legacy entries">
-             <Field label="Group by"><Select value={groupBy} onChange={e => setGroupBy(e.target.value as typeof groupBy)}>
-               <option value="user">User</option><option value="project">Project</option><option value="activity">Activity</option><option value="type">Type</option>
-             </Select></Field>
-             {groupedLoading ? <LoadingState label="Loading grouped totals�" /> : groupedError ? <Alert tone="error">{groupedError}</Alert> : (
-               <TableFrame tableClassName="text-sm"><thead><tr><Th>Group</Th><Th>Hours</Th><Th>Entries</Th></tr></thead><tbody>{(groupedTotals ?? []).map(bucket => <tr key={bucket.label}><Td>{bucket.label}</Td><Td>{fmtHours(bucket.hours)}</Td><Td>{bucket.entries}</Td></tr>)}</tbody></TableFrame>
-             )}
-           </Card>
-           <Card
-             title="User Report"
-             subtitle="Per-user export for a selected period"
-             icon={<IconUsers className="h-4.5 w-4.5" />}
-             actions={
-               <div className="flex flex-wrap items-center gap-2">
-                 <Select
-                   aria-label="User report filter"
-                   value={userFilter === 'all' ? '' : userFilter}
-                   onChange={(e) => setUserFilter(e.target.value)}
-                   className="w-auto"
-                 >
-                   <option value="">Select User…</option>
-                   {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-                 </Select>
-                 {presetSelect}
-               </div>
-             }
-           >
-             {userFilter && userFilter !== 'all' && userFilter !== 'me' ? (
-               <div className="flex flex-wrap items-center justify-between gap-3">
-                 <p className="text-sm text-fg-muted">
-                   Exporting entries for the selected user in the chosen period.
-                 </p>
-                 <Button variant="success" onClick={exportVisible} disabled={isExporting}>
-                   <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export User CSV'}
-                 </Button>
-               </div>
-             ) : (
-               <p className="text-sm text-fg-muted">Select a user to export their entries.</p>
-             )}
-           </Card>
- 
-           <Card
-             title="Monthly Exports"
-             subtitle="Pre-built exports by calendar month"
-             icon={<IconCalendar className="h-4.5 w-4.5" />}
-           >
-             <div className="flex flex-wrap gap-2">
-               <Button variant="secondary" size="sm" onClick={() => exportMonth(0)} disabled={isExporting}>This Month</Button>
-               <Button variant="secondary" size="sm" onClick={() => exportMonth(-1)} disabled={isExporting}>Last Month</Button>
-               <Button variant="secondary" size="sm" onClick={() => exportMonth(-2)} disabled={isExporting}>2 Months Ago</Button>
-               <Button variant="secondary" size="sm" onClick={() => exportMonth(-3)} disabled={isExporting}>3 Months Ago</Button>
-               <Button variant="secondary" size="sm" onClick={exportLast3} disabled={isExporting}>Last 3 (one file)</Button>
-               <Button variant="secondary" size="sm" onClick={exportLast3Total} disabled={isExporting}>Last 3 Total</Button>
-             </div>
-             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
-               <Field label="Custom Month" className="w-44">
-                 <Input type="month" value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} />
-               </Field>
-               <Button variant="secondary" onClick={exportCustomMonth} disabled={isExporting}>
-                 <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export Month'}
-               </Button>
-             </div>
-          </Card>
-        </div>
+        <Card
+          title="Totals"
+          subtitle={groupedLoading || groupedError
+            ? 'Complete scoped totals, including legacy entries'
+            : `${fmtHours(groupedTotal.hours)} hrs across ${groupedTotal.entries} entr${groupedTotal.entries === 1 ? 'y' : 'ies'}, including legacy entries`}
+          icon={<IconUsers className="h-4.5 w-4.5" />}
+          actions={
+            <label className="flex items-center gap-2 text-xs font-semibold text-fg-muted">
+              Group by
+              <Select value={groupBy} onChange={e => setGroupBy(e.target.value as typeof groupBy)} className="w-auto">
+                <option value="user">User</option><option value="project">Project</option><option value="activity">Activity</option><option value="type">Type</option>
+              </Select>
+            </label>
+          }
+          bodyClassName="p-0"
+        >
+          {groupedLoading ? <LoadingState label="Loading totals…" /> : groupedError ? <Alert tone="error" className="m-5">{groupedError}</Alert> : (groupedTotals ?? []).length === 0 ? (
+            <EmptyState className="m-5" icon={<IconUsers className="h-5 w-5" />} title="No hours match these filters" description="Widen the period or clear a filter." />
+          ) : (
+            <TableFrame tableClassName="text-sm">
+              <thead className="border-b border-line bg-muted"><tr><Th>{groupBy === 'user' ? 'User' : groupBy === 'project' ? 'Project' : groupBy === 'activity' ? 'Activity' : 'Type'}</Th><Th className="text-right">Hours</Th><Th className="text-right">Entries</Th></tr></thead>
+              <tbody className="divide-y divide-line">{(groupedTotals ?? []).map(bucket => <tr key={bucket.label}><Td>{bucket.label}</Td><Td className="text-right tabular-nums">{fmtHours(bucket.hours)}</Td><Td className="text-right tabular-nums">{bucket.entries}</Td></tr>)}</tbody>
+            </TableFrame>
+          )}
+        </Card>
       )}
 
       {tab === 'compare' && (

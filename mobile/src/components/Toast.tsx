@@ -77,7 +77,7 @@ export function Toast({
       ? { backgroundColor: palette.loggedTint, borderColor: palette.logged }
       : type === 'error'
       ? { backgroundColor: palette.missingTint, borderColor: palette.missingText }
-      : { backgroundColor: palette.sheet, borderColor: palette.controlBorder };
+      : { backgroundColor: palette.sheet, borderColor: palette.hairline };
 
   const textStyle =
     type === 'success'
