@@ -27,7 +27,7 @@ describe('Timecard tokens', () => {
     expect(p.sheet).toBe('#FFFFFF');
     expect(p.muted).toBe('#55657E');
     expect(p.hairline).toBe('#E1E7EF');
-    expect(p.controlBorder).toBe('#C9D3E0');
+    expect(p.controlBorder).toBe('#7D8CA3');
     expect(p.logged).toBe('#2E8B57');
     expect(p.leave).toBe('#5B4590');
     expect(p.missing).toBe('#EA2B32');
@@ -57,6 +57,11 @@ describe('Timecard tokens', () => {
     expect(contrast(p.loggedText, p.loggedTint)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(p.leave, p.leaveTint)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(p.missingText, p.missingTint)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([false, true])('gives control borders 3:1 non-text contrast on sheet and paper (dark=%s)', dark => {
+    const p = getPalette(dark);
+    for (const surface of [p.sheet, p.paper]) expect(contrast(p.controlBorder, surface)).toBeGreaterThanOrEqual(3);
   });
 
   it('uses the Timecard type scale, radii and flat shadows', () => {

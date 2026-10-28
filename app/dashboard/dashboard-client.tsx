@@ -716,8 +716,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
                   const dot = <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
                   if (todayPresence.loading) return <span className={`${base} bg-muted text-fg-muted ring-line`}>Checking today…</span>
                   if (todayPresence.error) return <span className={`${base} bg-muted text-fg-muted ring-line`}>Today unavailable</span>
-                  if (todayPresence.logged) return <span className={`${base} bg-success-surface text-success-text ring-success-ring`}>{dot}Logged today</span>
-                  return <span className={`${base} bg-warning-surface text-warning-text ring-warning-ring`}>{dot}Not logged yet</span>
+                  if (todayPresence.logged) return <span className={`${base} bg-success-surface text-success-text ring-success-ring`}>{dot}Today: logged</span>
+                  return <span className={`${base} bg-warning-surface text-warning-text ring-warning-ring`}>{dot}Today: not logged</span>
                 })()}
               </div>
             </div>

@@ -115,6 +115,7 @@ function AdminView() {
   const [message, setMessage] = useState('')
   const [remindAt, setRemindAt] = useState('')
   const [displayAsBanner, setDisplayAsBanner] = useState(false)
+  const [saving, setSaving] = useState(false)
   const due = useSharedReminders()
 
   const { data, error: loadError, loading, reload } = useAsyncData<GlobalReminder[]>(
@@ -128,7 +129,9 @@ function AdminView() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
+    setSaving(true)
     const { error } = await dataClient.addGlobalReminder({ message, remindAt, displayAsBanner })
+    setSaving(false)
     if (error) toast(error, 'error')
     else {
       setMessage('')
@@ -168,7 +171,7 @@ function AdminView() {
           <Field label="Show from" className="min-w-52 flex-1">
             <Input type="datetime-local" value={remindAt} onChange={(e) => setRemindAt(e.target.value)} required />
           </Field>
-          <Button type="submit">Set Reminder</Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Set Reminder'}</Button>
         </div>
       </form>
 

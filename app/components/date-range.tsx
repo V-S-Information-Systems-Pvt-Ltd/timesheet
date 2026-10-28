@@ -1,9 +1,7 @@
 'use client'
 
-// A single date-range control shared by every reports tab. It composes a
-// quick-access chip row (opt-in), the full preset <Select>, the custom
-// start/end date inputs, and the resolved-range badge so the filter UX is
-// identical everywhere instead of three overlapping controls per tab.
+// A single date-range control shared by every reports tab: the preset
+// <Select>, the custom start/end date inputs, and the resolved-range badge.
 
 import { presetRange, type Preset } from '@vsis/core'
 import { Badge, Input, Select } from './ui'
@@ -20,16 +18,6 @@ const PRESET_OPTIONS: { value: Preset; label: string }[] = [
   { value: 'prev2', label: '2 Months Ago' },
   { value: 'prev3', label: '3 Months Ago' },
   { value: 'custom', label: 'Custom Range' },
-]
-
-/** The subset surfaced as one-tap chips; the select still covers all presets. */
-const QUICK_PRESETS: { value: Preset; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'week', label: 'This Week' },
-  { value: '7days', label: 'Last 7 Days' },
-  { value: 'this', label: 'This Month' },
-  { value: 'last', label: 'Last Month' },
 ]
 
 export function DatePresetSelect({ preset, onPresetChange, allowCustom = true, label = 'Date range preset' }: {
@@ -54,8 +42,6 @@ export interface DateRangePickerProps {
   customEnd: string
   onCustomStartChange: (value: string) => void
   onCustomEndChange: (value: string) => void
-  /** Render the quick-access chip row above the preset select. */
-  quickChips?: boolean
   /**
    * Resolved range for the badge. Defaults to `presetRange(preset, …)`, which
    * matches what callers compute, but accept it so the badge never drifts from
@@ -72,36 +58,12 @@ export function DateRangePicker({
   customEnd,
   onCustomStartChange,
   onCustomEndChange,
-  quickChips = false,
   range,
   className,
 }: DateRangePickerProps) {
   const resolved = range ?? presetRange(preset, customStart, customEnd)
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
-      {quickChips && (
-        <div role="group" aria-label="Quick date ranges" className="flex flex-wrap items-center gap-1.5">
-          {QUICK_PRESETS.map(({ value, label }) => {
-            const active = preset === value
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onPresetChange(value)}
-                className={cn(
-                  'min-h-11 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors md:min-h-0',
-                  active
-                    ? 'border-ink bg-ink text-surface'
-                    : 'border-border bg-card text-fg hover:bg-muted'
-                )}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      )}
       <DatePresetSelect preset={preset} onPresetChange={onPresetChange} />
       {preset === 'custom' && (
         <>

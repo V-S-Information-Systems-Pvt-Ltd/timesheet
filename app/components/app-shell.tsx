@@ -32,6 +32,8 @@ function navigateInPlace(event: MouseEvent<HTMLAnchorElement>, href: string, pat
   if (path !== pathname || pathname !== '/dashboard') return false
   event.preventDefault()
   window.history.pushState(null, '', href)
+  // No page load, so move focus to the new panel; next frame, once a closing drawer stops making main inert.
+  requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }))
   return true
 }
 
@@ -279,7 +281,8 @@ export function AppShell({
         <button
           type="button"
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
-          className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          // Touch-only devices have no keyboard to use these with; the account menu still lists them.
+          className="pointer-coarse:hidden flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
         >
           <kbd className="rounded border border-line bg-muted px-1.5 text-xs">?</kbd>
           Keyboard shortcuts
@@ -391,8 +394,9 @@ export function AppShell({
 
         <main
           id="main-content"
+          tabIndex={-1}
           className={cn(
-            'flex-1',
+            'flex-1 outline-none',
             centered
               ? 'flex items-center justify-center px-4 py-10'
               : 'w-full px-4 py-6 md:px-8 md:py-8'

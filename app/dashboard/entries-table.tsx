@@ -852,7 +852,7 @@ export default function EntriesTable({
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                         <Td className="whitespace-nowrap text-fg-muted">{users.find(u => u.id === t.user_id)?.name || t.profiles?.name || t.profiles?.email || '—'}</Td>
-                        <Td className="font-medium text-fg">{t.projects?.name || (t.entry_type ? 'No project' : '—')}</Td>
+                        <Td className="min-w-48 font-medium text-fg"><div className="line-clamp-2" title={t.projects?.name}>{t.projects?.name || (t.entry_type ? 'No project' : '—')}</div></Td>
                         <Td className="text-fg-muted">
                           {t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code, t.activity_label) : `Legacy · ${t.activity_types?.name || '—'}`}
                           {t.ticket_number && <div className="text-xs">Ticket Number: {t.ticket_number}</div>}
@@ -860,11 +860,12 @@ export default function EntriesTable({
                           {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
                         </Td>
                         <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
-                        <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
+                        <Td className="max-w-60 truncate text-fg-muted"><span title={t.work_done}>{t.work_done}</span></Td>
                         <Td className="text-right relative">
                           {canDuplicateRow(t) ? (
                             <div className="inline-flex items-center gap-1">
-                              <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                              {/* Always visible: hover-only actions read as an empty column and hide what a row can do. */}
+                              <div className="hidden md:flex md:items-center md:gap-1">
                                 <IconButton label="Edit" size="sm" tone="primary" className="min-h-9 min-w-9" onClick={() => startEdit(t)} disabled={!canEdit || rowBusyIds.has(t.id)}>
                                   <IconPencil className="h-3.5 w-3.5" />
                                 </IconButton>
