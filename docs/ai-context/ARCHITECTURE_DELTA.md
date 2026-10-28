@@ -1,5 +1,12 @@
 # Architecture Delta
 
+## 2026-10-28 — Auth and backup review fixes
+
+- `IdentitySessionPort.create` returns `MobileSession | null`. With `expectedSessionVersion` (passed by mobile login from `signIn`) the insert is conditional on `profiles.session_version` under `FOR SHARE`; `null` means a reset/change committed after verification and login returns `INVALID_CREDENTIALS`.
+- Legacy-hash upgrade on sign-in is conditional on the hash it verified, so it cannot overwrite a concurrent reset.
+- `replacePassword` locks `mobile_sessions` before the profile, matching `changePassword` and refresh rotation.
+- Backup: the timesheet dedup key adds `customer` and stored `work_done`; export hides test users from non-super admins via `visibleUserClause`; restore row caps raised to 100k timesheets / 200k rows so the 20 MB body cap is the limit.
+
 ## 2026-10-23 — Admin password reset
 
 - New `POST /api/v1/admin/users/[id]/password-reset` (cookie or bearer, `Cache-Control: no-store`), body `{ mode: 'email' | 'generate' }`. `email` sends the standard reset link (502 `EMAIL_FAILED` if delivery fails); `generate` sets a random 16-character password and returns it once.

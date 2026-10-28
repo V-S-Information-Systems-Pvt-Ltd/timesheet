@@ -173,4 +173,29 @@ suite('password change vs refresh rotation race (live Postgres)', () => {
     expect(finalHashRes.rows[0].password_hash).toBe(initialHash)
     expect(finalHashRes.rows[0].session_version).toBe(5)
   })
+
+  run('creates a version-checked login session only while the version is current', async () => {
+    const created = await mobileSessionStore.create({ userId, refreshTokenHash: 'login-current', expectedSessionVersion: 0 })
+    expect(created?.userId).toBe(userId)
+
+    await pool.query(`update public.profiles set session_version = 1 where id = $1`, [userId])
+    expect(await mobileSessionStore.create({ userId, refreshTokenHash: 'login-stale', expectedSessionVersion: 0 })).toBeNull()
+  })
+
+  run('a login session waiting on an in-flight password reset is not created', async () => {
+    const resetter = await pool.connect()
+    try {
+      await resetter.query('begin')
+      await resetter.query(`update public.profiles set session_version = session_version + 1 where id = $1`, [userId])
+      // Blocks on the reset's row lock, then re-checks the committed version.
+      const pending = mobileSessionStore.create({ userId, refreshTokenHash: 'login-racing', expectedSessionVersion: 0 })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      await resetter.query('commit')
+      expect(await pending).toBeNull()
+    } finally {
+      resetter.release()
+    }
+    const rows = await pool.query(`select 1 from public.mobile_sessions where refresh_token_hash = 'login-racing'`)
+    expect(rows.rowCount).toBe(0)
+  })
 })

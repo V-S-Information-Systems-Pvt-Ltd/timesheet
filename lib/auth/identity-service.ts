@@ -44,7 +44,12 @@ export async function loginMobileIdentity(
     refreshTokenHash: deps.tokens.hashRefreshToken(refreshToken),
     deviceName: input.deviceName,
     platform: input.platform,
+    expectedSessionVersion: verified.sessionVersion,
   })
+  // The password changed after it was verified: the old one no longer signs in.
+  if (!session) {
+    return { ok: false, code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }
+  }
   const accessToken = await deps.tokens.signMobileAccessToken({
     userId: verified.user.id,
     sessionId: session.id,

@@ -118,6 +118,9 @@ async function replacePassword(
   passwordHash: string,
   now: Date
 ): Promise<boolean> {
+  // Lock session rows before the profile row, the same order changePassword
+  // and refresh rotation use (lib/auth/native.ts), so these cannot deadlock.
+  await client.query('select id from public.mobile_sessions where user_id = $1 for update', [userId])
   const profile = await client.query<{ id: string }>(
     `update public.profiles
         set password_hash = $1,

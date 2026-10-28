@@ -44,10 +44,24 @@ describe('mobileSessionStore (native)', () => {
       platform: 'android',
     })
 
-    expect(created.id).toBe('s-1')
-    expect(created.userId).toBe('u-1')
-    expect(created.familyId).toBe('f-1')
+    expect(created?.id).toBe('s-1')
+    expect(created?.userId).toBe('u-1')
+    expect(created?.familyId).toBe('f-1')
     expect(mockQuery.mock.calls[0][0]).toContain('insert into public.mobile_sessions')
+  })
+
+  it('creates a version-checked session only while the session version is current', async () => {
+    mockQuery.mockResolvedValueOnce([sessionRow])
+    const created = await mobileSessionStore.create({ userId: 'u-1', refreshTokenHash: 'hash-1', expectedSessionVersion: 2 })
+    expect(created?.id).toBe('s-1')
+    const [sql, params] = mockQuery.mock.calls[0]
+    expect(sql).toContain('session_version = $11')
+    expect(sql).toContain('for share')
+    expect(params[10]).toBe(2)
+
+    // A reset bumped the version: no row is inserted and nothing is returned.
+    mockQuery.mockResolvedValueOnce([])
+    expect(await mobileSessionStore.create({ userId: 'u-1', refreshTokenHash: 'hash-2', expectedSessionVersion: 2 })).toBeNull()
   })
 
   it('finds session by token hash and id', async () => {
