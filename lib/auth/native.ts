@@ -107,11 +107,13 @@ export async function signIn(
   const { valid, needsRehash } = await verifyPasswordDetails(password, row.password_hash)
   if (!valid) return { user: null, error: 'Invalid email or password.' }
 
-  // Transparently upgrade legacy or non-standard hashes upon successful authentication
+  // Transparently upgrade legacy or non-standard hashes upon successful
+  // authentication. Conditional on the hash just verified so a password
+  // reset that commits meanwhile is not overwritten with the old password.
   if (needsRehash) {
     try {
       const newHash = await hashPassword(password)
-      await query('update public.profiles set password_hash = $1 where id = $2', [newHash, row.id])
+      await query('update public.profiles set password_hash = $1 where id = $2 and password_hash = $3', [newHash, row.id, row.password_hash])
     } catch {
       // Best-effort non-blocking upgrade
     }

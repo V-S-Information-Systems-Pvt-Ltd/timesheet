@@ -395,6 +395,19 @@ describe('native repository work_done sanitization on bulk paths', () => {
     expect(insertCall![1]![5]).toBe(clean)
   })
 
+  it('keeps test users out of an ordinary admin backup export', async () => {
+    // Not the SUPER_ADMIN_EMAIL an earlier test sets.
+    const orgAdmin: Actor = { ...admin, email: 'org-admin@x.com' }
+    mockQuery.mockResolvedValue([])
+    const result = await nativeOperationsPersistence.exportBackup(orgAdmin)
+    expect(result.error).toBeNull()
+    for (const table of ['profiles', 'timesheets', 'leaves', 'reminders']) {
+      const call = mockQuery.mock.calls.find(([sql]) => String(sql).includes(`from public.${table} `))
+      expect(call?.[0]).toContain('not vu.is_test_user')
+      expect(call?.[1]).toEqual([orgAdmin.id])
+    }
+  })
+
   it('sanitizes work_done in restoreBackup timesheet inserts', async () => {
     const client = {
       query: vi.fn(async (sql: string, _params?: unknown[]) => {

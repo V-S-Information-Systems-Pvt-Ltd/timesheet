@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseBackup, backupTimesheetKey } from '@/lib/backup'
+import { parseBackup, backupTimesheetKey, MAX_TIMESHEETS } from '@/lib/backup'
 import { reportGroupLabel, selectRows } from '@/lib/reports'
 import { formatTimesheetCsvChunk } from '@/lib/reports/csv-export'
 import { resolveReportTotalsQuery } from '@/lib/domain/reporting'
@@ -47,7 +47,25 @@ describe('backup classification versions', () => {
     expect(parsed.payload?.timesheets[3].project).toBeNull()
     expect(parsed.payload?.timesheets[3].ticket_number).toBe('00-A,"b"')
     expect(parseBackup(parsed.payload).payload).toEqual(parsed.payload)
-    expect(backupTimesheetKey('u', 'd', null, null, 2, { entry_type:'support', activity_code:'customers', activity_other:null, ticket_number: 'a|b' })).not.toBe(backupTimesheetKey('u', 'd', null, null, 2, { entry_type:'support', activity_code:'customers', activity_other: 'b', ticket_number: 'a' }))
+    expect(backupTimesheetKey('u', 'd', null, null, 2, { entry_type:'support', activity_code:'customers', activity_other:null, ticket_number: 'a|b', work_done: 'w' })).not.toBe(backupTimesheetKey('u', 'd', null, null, 2, { entry_type:'support', activity_code:'customers', activity_other: 'b', ticket_number: 'a', work_done: 'w' }))
+  })
+  it('keeps same-slot entries that differ only in work done or customer', () => {
+    const input = doc()
+    const base = input.timesheets[0]
+    input.timesheets = [base, { ...base, work_done: 'other work' }, { ...input.timesheets[3], customer: 'Acme' }, { ...input.timesheets[3], customer: 'Globex' }]
+    expect(parseBackup(input).payload?.timesheets).toHaveLength(4)
+    // Keyed as restore stores work done, so an existing DB row matches its backup row.
+    const key = (work_done: string) => backupTimesheetKey('u', 'd', null, null, 2, { work_done })
+    expect(key('  <b>fix</b>  bug ')).toBe(key('fix bug'))
+    expect(key('')).toBe(key('restored entry'))
+  })
+  it('restores a backup with more than 5000 timesheets but still caps the row count', () => {
+    const input = doc()
+    const base = input.timesheets[0]
+    input.timesheets = Array.from({ length: 5001 }, (_, i) => ({ ...base, work_done: `entry ${i}` }))
+    expect(parseBackup(input).payload?.timesheets).toHaveLength(5001)
+    input.timesheets = Array.from({ length: MAX_TIMESHEETS + 1 }, () => base)
+    expect(parseBackup(input)).toEqual({ ok: false, error: 'Backup file is too large to restore.' })
   })
   it('adapts v1 as explicit legacy rather than trusting classification fields', () => {
     const input = doc(); input.version = 1; input.timesheets = [input.timesheets[1]]

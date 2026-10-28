@@ -31,6 +31,9 @@ export interface CreateMobileSessionInput {
   deviceName?: string
   platform?: string
   now?: Date
+  /** profiles.session_version read when the credentials were verified. When
+   * set, the session is only created if it is still current. */
+  expectedSessionVersion?: number
 }
 
 export interface RotateMobileSessionInput {
@@ -100,13 +103,42 @@ function createValues(input: CreateMobileSessionInput, now: Date, familyId: stri
   }
 }
 
-async function nativeCreate(input: CreateMobileSessionInput): Promise<MobileSession> {
+/** Returns null when `expectedSessionVersion` is set and no longer current:
+ * a password reset or change committed after the credentials were verified. */
+async function nativeCreate(input: CreateMobileSessionInput): Promise<MobileSession | null> {
   const now = input.now ?? new Date()
   const values = createValues(input, now, randomUUID(), randomUUID())
+  const columns = `(id, user_id, family_id, refresh_token_hash, device_name, platform,
+       created_at, last_used_at, idle_expires_at, absolute_expires_at)`
+  if (input.expectedSessionVersion !== undefined) {
+    // FOR SHARE waits for an in-flight password update to commit and then
+    // re-checks the version, so the reset's revocation cannot be slipped past.
+    const rows = await query<SessionRow>(
+      `insert into public.mobile_sessions ${columns}
+       select $1::uuid, $2::uuid, $3::uuid, $4::text, $5::text, $6::text,
+              $7::timestamptz, $8::timestamptz, $9::timestamptz, $10::timestamptz
+         from public.profiles
+        where id = $2::uuid and session_version = $11
+          for share
+       returning *`,
+      [
+        values.id,
+        values.user_id,
+        values.family_id,
+        values.refresh_token_hash,
+        values.device_name,
+        values.platform,
+        values.created_at,
+        values.last_used_at,
+        values.idle_expires_at,
+        values.absolute_expires_at,
+        input.expectedSessionVersion,
+      ]
+    )
+    return rows[0] ? mapRow(rows[0]) : null
+  }
   const rows = await query<SessionRow>(
-    `insert into public.mobile_sessions
-      (id, user_id, family_id, refresh_token_hash, device_name, platform,
-       created_at, last_used_at, idle_expires_at, absolute_expires_at)
+    `insert into public.mobile_sessions ${columns}
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      returning *`,
     [
