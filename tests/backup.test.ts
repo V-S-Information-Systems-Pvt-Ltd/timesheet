@@ -35,6 +35,14 @@ describe('parseBackup', () => {
     expect(result.ok && result.payload?.globalReminders.map(r => r.display_as_banner)).toEqual([true, false, false])
     expect(parseBackup({ ...doc, globalReminders: [{ ...doc.globalReminders[0], display_as_banner: 'true' }] }).ok).toBe(false)
   })
+  it('keeps project visibility and drops blank or repeated departments', () => {
+    const doc = validDoc()
+    doc.projects = [{ name: 'Old', so_number: null, is_hidden: true, departments: [' Eng ', 'Eng', ''] }, { name: 'New', so_number: null }]
+    const projects = parseBackup(doc).payload?.projects
+    expect(projects?.[0]).toMatchObject({ is_hidden: true, departments: ['Eng'] })
+    expect(projects?.[1]).not.toHaveProperty('is_hidden')
+    expect(projects?.[1]).not.toHaveProperty('departments')
+  })
   it('accepts a valid payload and normalizes emails/dates', () => {
     const res = parseBackup(validDoc())
     expect(res.ok).toBe(true)

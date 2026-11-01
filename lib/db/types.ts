@@ -184,6 +184,8 @@ export interface TimesheetListOptions {
 export interface TimesheetListResult {
   rows: Timesheet[]
   count: number
+  /** Hours of the filtered user, or of the actor when unfiltered (with the count). */
+  hours?: number
 }
 
 export interface LeafRowInput {

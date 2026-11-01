@@ -30,6 +30,8 @@ export interface TimesheetQuery {
 export interface TimesheetResult {
   data: Timesheet[] | null
   count: number | null
+  /** Hours of the filtered user (or the caller), returned with the count. */
+  hours?: number | null
   error: string | null
 }
 
@@ -97,6 +99,7 @@ export interface DataClient {
   addProject(name: string): Promise<MutationResult>
   renameProject(id: string, name: string): Promise<MutationResult>
   setProjectSO(id: string, soNumber: string): Promise<MutationResult>
+  setProjectScope(id: string, scope: { hidden?: boolean; departments?: string[] }): Promise<MutationResult>
   deleteProject(id: string): Promise<MutationResult>
   getTimesheets(q?: TimesheetQuery, options?: ReportReadOptions): Promise<TimesheetResult>
   getLastTimesheet(): Promise<{ data: Timesheet | null; error: string | null }>
@@ -409,12 +412,13 @@ async function getTimesheetsOverHttp(q: TimesheetQuery = {}, options?: ReportRea
   const execute = async () => {
     try {
       const payload = api.unwrap(
-        await api.request<{ rows: TimesheetEntry[]; count: number }>(path),
+        await api.request<{ rows: TimesheetEntry[]; count: number; hours?: number }>(path),
         200
       )
       return {
         data: payload.rows.map(toTimesheetRow),
         count: payload.count ?? null,
+        hours: payload.hours ?? null,
         error: null,
       }
     } catch (err) {
@@ -449,6 +453,8 @@ export const dataClient: DataClient = {
         name: project.name,
         so_number: project.so_number ?? null,
         is_timesheet_project: project.is_timesheet_project,
+        is_hidden: project.is_hidden,
+        departments: project.departments,
         created_at: project.created_at,
       })),
       error: null,
@@ -477,6 +483,12 @@ export const dataClient: DataClient = {
   async setProjectSO(id, soNumber) {
     return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH', body: JSON.stringify({ soNumber }),
+    })
+  },
+
+  async setProjectScope(id, scope) {
+    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(scope),
     })
   },
 

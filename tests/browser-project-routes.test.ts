@@ -5,6 +5,7 @@ const { getActor, gate, verify, findSession, persistence } = vi.hoisted(() => ({
   persistence: {
     listProjects: vi.fn(), createProject: vi.fn(), renameProject: vi.fn(),
     setProjectSO: vi.fn(), deleteProject: vi.fn(),
+    setProjectHidden: vi.fn(), setProjectDepartments: vi.fn(),
   },
 }))
 vi.mock('@/lib/auth', async () => ({ ...await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth'), getActor }))
@@ -47,7 +48,7 @@ beforeEach(() => {
   gate.mockResolvedValue(null)
   persistence.listProjects.mockResolvedValue([project])
   persistence.createProject.mockResolvedValue({ data: project, error: null })
-  for (const write of [persistence.renameProject, persistence.setProjectSO, persistence.deleteProject]) {
+  for (const write of [persistence.renameProject, persistence.setProjectSO, persistence.deleteProject, persistence.setProjectHidden, persistence.setProjectDepartments]) {
     write.mockResolvedValue({ error: null })
   }
 })
@@ -119,6 +120,22 @@ describe('browser project write parity', () => {
     expect((await PATCH(request('PATCH', { soNumber: '' }), context)).status).toBe(200)
     expect(persistence.setProjectSO).toHaveBeenLastCalledWith(actor, 'p1', null)
     expect(persistence.listProjects).not.toHaveBeenCalled()
+  })
+
+  it('hides a project and sets its departments', async () => {
+    expect((await PATCH(request('PATCH', { hidden: true, departments: ['Sales'] }), context)).status).toBe(200)
+    expect(persistence.setProjectHidden).toHaveBeenCalledWith(actor, 'p1', true)
+    expect(persistence.setProjectDepartments).toHaveBeenCalledWith(actor, 'p1', ['Sales'])
+  })
+
+  it('rejects malformed visibility fields and surfaces unknown departments', async () => {
+    expect((await PATCH(request('PATCH', { hidden: 'yes' }), context)).status).toBe(400)
+    expect((await PATCH(request('PATCH', { departments: 'Sales' }), context)).status).toBe(400)
+    expect((await PATCH(request('PATCH', { departments: [1] }), context)).status).toBe(400)
+    expect(persistence.setProjectHidden).not.toHaveBeenCalled()
+    expect(persistence.setProjectDepartments).not.toHaveBeenCalled()
+    persistence.setProjectDepartments.mockResolvedValue({ error: 'Choose departments from the list.' })
+    expect((await PATCH(request('PATCH', { departments: ['Nope'] }), context)).status).toBe(400)
   })
 
   it('preserves blank-name validation and rejects the retired Telegram field', async () => {

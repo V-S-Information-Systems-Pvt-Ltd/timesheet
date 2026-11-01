@@ -47,6 +47,9 @@ export interface CreateProjectInput {
 export interface UpdateProjectPatch {
   name?: string
   soNumber?: string | null
+  hidden?: boolean
+  /** Empty clears the department scope. */
+  departments?: string[]
 }
 
 export interface CreateActivityTypeInput {
@@ -239,6 +242,14 @@ export async function updateProjectFields(
   if (patch.soNumber !== undefined) {
     const result = await setProjectSO(actor, id, patch.soNumber, deps)
     if (!result.ok) return result
+  }
+  if (patch.hidden !== undefined) {
+    const result = await deps.persistence.setProjectHidden(actor, id, patch.hidden)
+    if (result.error) return badRequest(result.error)
+  }
+  if (patch.departments !== undefined) {
+    const result = await deps.persistence.setProjectDepartments(actor, id, patch.departments)
+    if (result.error) return badRequest(result.error)
   }
 
   return { ok: true, data: undefined }

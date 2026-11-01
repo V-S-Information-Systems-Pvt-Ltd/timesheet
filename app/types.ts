@@ -91,6 +91,8 @@ export interface BackupProject {
   so_number: string | null
   /** Required in version 2; inferred only for explicit version 1 imports. */
   is_timesheet_project?: boolean
+  is_hidden?: boolean
+  departments?: string[]
 }
 
 export interface BackupActivityType {
@@ -174,6 +176,10 @@ export interface Project {
    * (Internal, Internal IT, Support) are false; real projects default true.
    * Absent means eligible (older caches predate the flag). */
   is_timesheet_project?: boolean
+  /** Hidden from pickers for new entries; existing entries keep it. */
+  is_hidden?: boolean
+  /** Departments that may log time against it. Null/empty: everyone. */
+  departments?: string[] | null
   created_at: string
 }
 

@@ -80,8 +80,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     }
     const [vUsers, vTimesheets, vLeaves, vReminders] = [visible('id'), visible('user_id'), visible('user_id'), visible('user_id')]
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
-      query<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean }>(
-        'select id, name, so_number, is_timesheet_project from public.projects order by name'
+      query<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean; is_hidden: boolean; departments: string[] | null }>(
+        'select id, name, so_number, is_timesheet_project, is_hidden, departments from public.projects order by name'
       ),
       query<{ id: string; name: string; is_active: boolean; entry_type: BackupActivityType['entry_type']; code: string | null }>(
         'select id, name, is_active, entry_type, code from public.activity_types order by name'
@@ -111,7 +111,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       payload: {
         version: 2,
         exportedAt: new Date().toISOString(),
-        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project })),
+        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project,
+          ...(p.is_hidden ? { is_hidden: true } : {}), ...(p.departments?.length ? { departments: p.departments } : {}) })),
         activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active, ...(t.entry_type ? { entry_type: t.entry_type, code: t.code } : {}) })),
         timesheets: timesheets.map(t => ({
           email: emailById.get(t.user_id) ?? '',
@@ -165,11 +166,14 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       const existingProjects = await client.query<{ id: string; name: string; is_timesheet_project: boolean }>('select id, name, is_timesheet_project from public.projects')
       const eligibleByName = new Map(existingProjects.rows.map(r => [r.name, r.is_timesheet_project]))
       for (const r of existingProjects.rows) projectIdByName.set(r.name, r.id)
+      // Departments are not in the backup; keep only names this database knows.
+      const knownDepartments = new Set((await client.query<{ name: string }>('select name from public.departments')).rows.map(r => r.name))
       for (const p of payload.projects) {
         if (projectIdByName.has(p.name)) continue
+        const departments = (p.departments ?? []).filter(d => knownDepartments.has(d))
         const ins = await client.query<{ id: string }>(
-          `insert into public.projects (name, so_number, is_timesheet_project) values ($1, $2, $3) returning id`,
-          [p.name, p.so_number, p.is_timesheet_project !== false]
+          `insert into public.projects (name, so_number, is_timesheet_project, is_hidden, departments) values ($1, $2, $3, $4, $5) returning id`,
+          [p.name, p.so_number, p.is_timesheet_project !== false, p.is_hidden === true, departments.length ? departments : null]
         )
         projectIdByName.set(p.name, ins.rows[0].id)
         eligibleByName.set(p.name, p.is_timesheet_project !== false)

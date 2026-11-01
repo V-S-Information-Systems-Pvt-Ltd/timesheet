@@ -48,6 +48,8 @@ function createPersistence(): { [K in keyof ReferencePersistence]: ReturnType<ty
     renameDepartment: vi.fn(),
     deleteDepartment: vi.fn(),
     setProjectSO: vi.fn(),
+    setProjectHidden: vi.fn(),
+    setProjectDepartments: vi.fn(),
     deleteProject: vi.fn(),
     listActivityTypes: vi.fn(),
     listAllActivityTypes: vi.fn(),

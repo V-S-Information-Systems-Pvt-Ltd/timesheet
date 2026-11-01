@@ -43,8 +43,17 @@ describe('classification persistence', () => {
   })
 
   it.each([true, false, undefined])('requires an explicitly eligible project flag %s', async (flag) => {
-    query.mockResolvedValue([{ is_timesheet_project: flag }])
-    expect(await nativeTimesheetPersistence.projectEligibility(actor, id)).toEqual({ eligible: flag === true })
+    query.mockResolvedValue([{ is_timesheet_project: flag, available: true }])
+    expect(await nativeTimesheetPersistence.projectEligibility(actor, id)).toEqual({ eligible: flag === true, available: true })
+  })
+
+  it('checks hidden/department availability for the target user, defaulting to the actor', async () => {
+    query.mockResolvedValue([{ is_timesheet_project: true, available: false }])
+    expect(await nativeTimesheetPersistence.projectEligibility(actor, id, 'u-target')).toEqual({ eligible: true, available: false })
+    expect(query.mock.calls[0][0]).toContain('not p.is_hidden')
+    expect(query.mock.calls[0][1]).toEqual([id, 'u-target'])
+    await nativeTimesheetPersistence.projectEligibility(actor, id)
+    expect(query.mock.calls[1][1]).toEqual([id, actor.id])
   })
 
   it('keeps project eligibility readable and rename writes never overwrite it', async () => {

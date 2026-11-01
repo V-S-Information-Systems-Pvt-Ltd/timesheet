@@ -75,6 +75,20 @@ describe('native repository authorization', () => {
     expect(mockQuery.mock.calls[1][1]).toEqual([user.id, 'someone-else'])
   })
 
+  it('sums hours for the actor when unfiltered and for the filtered user otherwise, inside the scope', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 3, h: 7.5 }]).mockResolvedValueOnce([])
+    const result = await nativeTimesheetPersistence.list(admin, {})
+    expect(result).toMatchObject({ count: 3, hours: 7.5 })
+    expect(mockQuery.mock.calls[0][0]).toContain('sum(t.hours_worked) filter (where t.user_id = $2)')
+    expect(mockQuery.mock.calls[0][1]).toEqual([admin.id, admin.id])
+
+    mockQuery.mockResolvedValueOnce([{ c: 1, h: 2 }]).mockResolvedValueOnce([])
+    await nativeTimesheetPersistence.list(user, { userId: 'someone-else' })
+    expect(mockQuery.mock.calls[2][0]).toContain('where t.user_id = $1 and t.user_id = $2')
+    expect(mockQuery.mock.calls[2][0]).toContain('filter (where t.user_id = $3)')
+    expect(mockQuery.mock.calls[2][1]).toEqual([user.id, 'someone-else', 'someone-else'])
+  })
+
   it('blocks a regular user from reading another user\'s timesheet', async () => {
     const result = await nativeTimesheetPersistence.getByUserDate(user, 'other-id', '2024-01-01')
     expect(result).toBeNull()
@@ -439,6 +453,26 @@ describe('native repository work_done sanitization on bulk paths', () => {
     expect(insertCall![1]![5]).toBe(clean)
   })
 
+  it('restores project visibility, keeping only known departments', async () => {
+    const client = {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.includes(' from public.departments')) return { rows: [{ name: 'Eng' }] }
+        if (sql.includes(' from public.')) return { rows: [] }
+        return { rows: [{ id: 'new-id' }], rowCount: 1 }
+      }),
+      release: vi.fn(),
+    }
+    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+    const result = await nativeOperationsPersistence.restoreBackup(admin, {
+      version: 2, exportedAt: '2026-08-20T00:00:00.000Z',
+      projects: [{ name: 'Old', so_number: null, is_timesheet_project: true, is_hidden: true, departments: ['Eng', 'Gone'] }],
+      activityTypes: [], timesheets: [], leaves: [], reminders: [], globalReminders: [],
+    })
+    expect(result.error).toBeNull()
+    const insert = client.query.mock.calls.find(([sql]) => String(sql).includes('insert into public.projects'))
+    expect(insert![1]).toEqual(['Old', null, true, true, ['Eng']])
+  })
+
   it('deduplicates reminders and global reminders in restoreBackup', async () => {
     const client = {
       query: vi.fn(async (sql: string, _params?: unknown[]) => {
@@ -567,7 +601,7 @@ describe('native repository batch validation reads (F08)', () => {
 
       const [sql, params] = mockQuery.mock.calls[0]
       expect(sql).toContain('insert into public.projects (name, so_number) values ($1, $2)')
-      expect(sql).toContain('returning id, name, so_number, is_timesheet_project, created_at::text as created_at')
+      expect(sql).toContain('returning id, name, so_number, is_timesheet_project, is_hidden, departments, created_at::text as created_at')
       expect(params).toEqual(['Alpha', 'SO-101'])
     })
 

@@ -16,7 +16,7 @@ import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { DateChooserModal } from './DateChooserModal';
 import { Icon } from './Icon';
-import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
+import { computeSmartHours, scopeProjects, timesheetToLogEntry } from '@vsis/core';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
 import { useBackfillMinDate } from '../utils/use-backfill-min-date';
@@ -268,14 +268,22 @@ export function TimeEntryForm({
     return dashboard?.recentEntries?.[0] || null;
   }, [dashboard?.recentEntries]);
 
+  // Hidden and out-of-department projects drop out (the server rejects them),
+  // except the one this entry already has.
+  const pickableProjects = useMemo(
+    () => scopeProjects(reference?.projects ?? [], effectiveActor?.department)
+      .filter(p => (legacy || p.is_timesheet_project !== false) && (!p.is_hidden || (mode === 'edit' && p.id === initialValues?.projectId))),
+    [reference?.projects, effectiveActor?.department, legacy, mode, initialValues?.projectId]
+  );
+
   const projectPickerItems: PickerItem[] = useMemo(
     () =>
-      reference?.projects?.filter(p => legacy || p.is_timesheet_project !== false).map((p) => ({
+      pickableProjects.map((p) => ({
         id: p.id,
         name: p.name,
         subtitle: p.so_number ? `SO: ${p.so_number}` : undefined,
-      })) ?? [],
-    [reference?.projects, legacy]
+      })),
+    [pickableProjects]
   );
 
   // Project/Internal activities come from the admin-managed catalogue; the
@@ -394,7 +402,7 @@ export function TimeEntryForm({
    * and the same source that drives "Copy last entry".
    */
   const quickProjects = useMemo(() => {
-    const projects = (reference?.projects ?? []).filter(p => legacy || p.is_timesheet_project !== false);
+    const projects = pickableProjects;
     const byId = new Map(projects.map((project) => [project.id, project]));
     const ranked: typeof projects = [];
     const seen = new Set<string>();
@@ -415,7 +423,7 @@ export function TimeEntryForm({
       }
     }
     return ranked;
-  }, [reference?.projects, dashboard?.recentEntries, legacy]);
+  }, [pickableProjects, dashboard?.recentEntries]);
 
   /**
    * The per-field message. It is announced politely and mirrored into the
@@ -724,7 +732,7 @@ export function TimeEntryForm({
                     style={[styles.chip, { backgroundColor: palette.sheet, borderColor: palette.controlBorder }]}
                   >
                     <Text style={[styles.chipText, { color: palette.primaryText }]}>
-                      {`Browse all (${reference?.projects?.length ?? 0})`}
+                      {`Browse all (${pickableProjects.length})`}
                     </Text>
                   </PressableScale>
                 </ChipRow>

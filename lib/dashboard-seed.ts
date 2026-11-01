@@ -20,7 +20,7 @@ export interface DashboardSeed {
   layouts: SeedRead<{ dashboard: DashboardLayout; admin: AdminDashboardLayout }>
   isSuperAdmin: boolean
   page: EntriesPage
-  entries: SeedRead<{ rows: Timesheet[]; count: number }>
+  entries: SeedRead<{ rows: Timesheet[]; count: number; hours?: number }>
   month: { range: ReturnType<typeof dashboardMonthRange>; state: DashboardMonthTotalsState } | null
 }
 
@@ -47,7 +47,7 @@ export function projectDashboardProfile(p: User): User {
   }
 }
 export function projectDashboardProject(p: Project): Project {
-  return { id: p.id, name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project, created_at: p.created_at }
+  return { id: p.id, name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project, is_hidden: p.is_hidden, departments: p.departments, created_at: p.created_at }
 }
 export function projectDashboardActivity(p: ActivityType): ActivityType {
   return { id: p.id, name: p.name, is_active: p.is_active, created_at: p.created_at, entry_type: p.entry_type ?? null, code: p.code ?? null }

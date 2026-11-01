@@ -92,9 +92,12 @@ export function parseBackup(input: unknown): BackupValidationResult {
     if (!name) return { ok: false, error: 'A project in the backup is missing its name.' }
     if (seenProjects.has(name)) continue // dedupe by name
     seenProjects.add(name)
+    const departments = Array.isArray(r?.departments) ? [...new Set(r.departments.map(str).filter((d): d is string => !!d))] : []
     if (isV2 && typeof r?.is_timesheet_project !== 'boolean') return { ok: false, error: 'A version 2 project is missing its eligibility flag.' }
     projects.push({ name, so_number: str(r?.so_number),
       is_timesheet_project: isV2 ? r.is_timesheet_project as boolean : !['internal', 'internal it', 'support'].includes(name.toLowerCase()),
+      ...(r?.is_hidden === true ? { is_hidden: true } : {}),
+      ...(departments.length ? { departments } : {}),
     })
   }
 

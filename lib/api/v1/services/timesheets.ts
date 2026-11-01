@@ -70,7 +70,7 @@ function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
 export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
-): Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
+): Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number; hours?: number }>> {
   const result = await listTimesheetsDomain(actor, options, timesheetDeps())
   if (!result.ok) {
     return mapDomainError(result.error)
@@ -80,6 +80,7 @@ export async function listTimesheetsService(
     data: {
       rows: result.data.rows.map(mapTimesheetDto),
       count: result.data.count,
+      ...(result.data.hours !== undefined ? { hours: result.data.hours } : {}),
     },
   }
 }
