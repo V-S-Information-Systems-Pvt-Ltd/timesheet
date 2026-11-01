@@ -453,6 +453,26 @@ describe('native repository work_done sanitization on bulk paths', () => {
     expect(insertCall![1]![5]).toBe(clean)
   })
 
+  it('restores project visibility, keeping only known departments', async () => {
+    const client = {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.includes(' from public.departments')) return { rows: [{ name: 'Eng' }] }
+        if (sql.includes(' from public.')) return { rows: [] }
+        return { rows: [{ id: 'new-id' }], rowCount: 1 }
+      }),
+      release: vi.fn(),
+    }
+    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+    const result = await nativeOperationsPersistence.restoreBackup(admin, {
+      version: 2, exportedAt: '2026-08-20T00:00:00.000Z',
+      projects: [{ name: 'Old', so_number: null, is_timesheet_project: true, is_hidden: true, departments: ['Eng', 'Gone'] }],
+      activityTypes: [], timesheets: [], leaves: [], reminders: [], globalReminders: [],
+    })
+    expect(result.error).toBeNull()
+    const insert = client.query.mock.calls.find(([sql]) => String(sql).includes('insert into public.projects'))
+    expect(insert![1]).toEqual(['Old', null, true, true, ['Eng']])
+  })
+
   it('deduplicates reminders and global reminders in restoreBackup', async () => {
     const client = {
       query: vi.fn(async (sql: string, _params?: unknown[]) => {

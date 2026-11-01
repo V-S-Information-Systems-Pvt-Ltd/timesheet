@@ -16,7 +16,8 @@ import {
   requiresTicketNumber, requiresActivityOther,
   type EntryType, type ActivityCode, type CreateTimesheetInput,
 } from '@vsis/contracts';
-import { useSessionReference } from '../auth/SessionProvider';
+import { useSessionActor, useSessionReference } from '../auth/SessionProvider';
+import { scopeProjects } from '@vsis/core';
 import type { BatchUpdateTimesheetItem, TimesheetEntry } from '../api/contracts';
 import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { Chip } from './Chip';
@@ -123,6 +124,7 @@ interface BulkEditModalProps {
 
 export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit, palette }: BulkEditModalProps) {
   const { reference } = useSessionReference();
+  const { effectiveActor } = useSessionActor();
   const [draft, setDraft] = useState<BulkEditDraft>(emptyBulkEditDraft);
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<'project' | 'activityType' | 'classProject' | null>(null);
@@ -145,16 +147,22 @@ export function BulkEditModal({ visible, entries, isLoading, onCancel, onSubmit,
     setError(null);
   };
 
+  // Hidden and out-of-department projects drop out, except ones these entries already have.
+  const projects = useMemo(
+    () => scopeProjects(reference?.projects ?? [], effectiveActor?.department)
+      .filter((p) => !p.is_hidden || entries.some((e) => e.project_id === p.id)),
+    [reference?.projects, effectiveActor?.department, entries]
+  );
   const legacyProjects: PickerItem[] = useMemo(
-    () => (reference?.projects ?? []).map((p) => ({ id: p.id, name: p.name, subtitle: p.so_number ? `SO: ${p.so_number}` : undefined })),
-    [reference?.projects]
+    () => projects.map((p) => ({ id: p.id, name: p.name, subtitle: p.so_number ? `SO: ${p.so_number}` : undefined })),
+    [projects]
   );
   const timesheetProjects: PickerItem[] = useMemo(
     () =>
-      (reference?.projects ?? [])
+      projects
         .filter((p) => p.is_timesheet_project !== false)
         .map((p) => ({ id: p.id, name: p.name, subtitle: p.so_number ? `SO: ${p.so_number}` : undefined })),
-    [reference?.projects]
+    [projects]
   );
   const activityTypeItems: PickerItem[] = useMemo(
     () => (reference?.activityTypes ?? []).filter((a) => !a.entry_type).map((a) => ({ id: a.id, name: a.name })),

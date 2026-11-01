@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
-import { todayISO } from '@vsis/core'
+import { scopeProjects, todayISO } from '@vsis/core'
 import { createDashboardMonthTotals, type DashboardMonthTotalsState } from '@/lib/dashboard-month-totals'
 import { createTimesheetPageReader, entriesPageFromSearch, entriesPageQuery, mergePageOverlays, type TimesheetPageState } from '@/lib/dashboard-timesheets'
 import { insertOptimisticTimesheet, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
@@ -128,11 +128,9 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const searchParams = useSearchParams()
   // Projects outside the viewer's department act as hidden for them: pickers
   // drop them (an edit keeps its current one); names still resolve. The server
-  // enforces the same rule on writes. ProjectManager gets the real rows.
+  // enforces the same rule on writes. ProjectManager and backfill get the real rows.
   const department = profile?.department
-  const projects = useMemo(() => allProjects.map(p =>
-    p.departments?.length && !(department && p.departments.includes(department)) ? { ...p, is_hidden: true } : p
-  ), [allProjects, department])
+  const projects = useMemo(() => scopeProjects(allProjects, department), [allProjects, department])
   const role = profile?.role ?? 'user'
   const permission = profile?.permission_role ?? 'user'
   const hierarchy = profile?.hierarchy_role ?? 'user'
@@ -544,7 +542,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           backfill: (
             <BackfillForm
               allUsers={allUsers}
-              projects={projects}
+              projects={allProjects}
               activityTypes={activityTypes}
               onChanged={refreshTimesheetData}
             />

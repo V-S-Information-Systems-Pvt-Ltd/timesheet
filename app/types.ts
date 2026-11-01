@@ -91,6 +91,8 @@ export interface BackupProject {
   so_number: string | null
   /** Required in version 2; inferred only for explicit version 1 imports. */
   is_timesheet_project?: boolean
+  is_hidden?: boolean
+  departments?: string[]
 }
 
 export interface BackupActivityType {

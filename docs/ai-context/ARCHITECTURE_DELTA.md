@@ -12,7 +12,8 @@
 - `ReferencePersistence` adds `setProjectHidden` / `setProjectDepartments`. Department rename carries into project scopes; delete is refused while a project is limited to it.
 - Writes: `projectEligibility(actor, projectId, userId?)` also returns `available`; a new or changed Project entry on a hidden or out-of-department project (target user's department) is a `VALIDATION_ERROR`. An edit keeping its stored project is allowed.
 - `GET /api/v1/timesheets` (with count) returns `hours`: the filtered user's hours, or the caller's when unfiltered, summed inside the actor-scoped `where`.
-- Not covered: backup export/restore does not carry the two project fields; mobile pickers do not yet filter hidden/department projects (server still rejects).
+- Backup projects carry optional `is_hidden` / `departments` (still version 2); restore keeps only departments the target database lists.
+- `@vsis/core` `scopeProjects(projects, department)` marks closed projects hidden for web and mobile pickers; web backfill scopes by the chosen user's department.
 
 ## 2026-10-28 — Auth and backup review fixes
 

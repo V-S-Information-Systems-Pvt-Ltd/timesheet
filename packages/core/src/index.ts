@@ -43,3 +43,5 @@ export {
   isWithinBackfillWindow,
   type BackfillWindow,
 } from './backfill'
+
+export { scopeProjects } from './projects'
