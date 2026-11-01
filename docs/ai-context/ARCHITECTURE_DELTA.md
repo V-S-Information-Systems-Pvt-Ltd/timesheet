@@ -1,5 +1,10 @@
 # Architecture Delta
 
+## 2026-11-01 — Brand colour contrast gate
+
+- `isAccessiblePrimaryColor` (used by `validateBranding`, so `PUT /api/v1/admin/branding`) now needs 4.5:1 white-on-primary instead of 3.0:1: button labels and avatar initials are 12–14px. The 1.8:1 dark-surface rule is unchanged.
+- Only writes are checked; a colour saved under the old 3:1 gate still renders until an admin changes it.
+
 ## 2026-10-28 — Auth and backup review fixes
 
 - `IdentitySessionPort.create` returns `MobileSession | null`. With `expectedSessionVersion` (passed by mobile login from `signIn`) the insert is conditional on `profiles.session_version` under `FOR SHARE`; `null` means a reset/change committed after verification and login returns `INVALID_CREDENTIALS`.
