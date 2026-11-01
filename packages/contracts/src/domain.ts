@@ -36,6 +36,10 @@ export interface ProjectDto {
   /** Eligible for the new-format Project picker. Absent means eligible (legacy
    * clients and older caches treat every project as selectable). */
   is_timesheet_project?: boolean
+  /** Hidden from pickers for new entries. Absent means visible. */
+  is_hidden?: boolean
+  /** Departments that may log time against it. Absent/empty means everyone. */
+  departments?: string[]
   created_at: string
 }
 

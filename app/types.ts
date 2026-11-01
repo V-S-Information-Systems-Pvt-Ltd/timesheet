@@ -174,6 +174,10 @@ export interface Project {
    * (Internal, Internal IT, Support) are false; real projects default true.
    * Absent means eligible (older caches predate the flag). */
   is_timesheet_project?: boolean
+  /** Hidden from pickers for new entries; existing entries keep it. */
+  is_hidden?: boolean
+  /** Departments that may log time against it. Null/empty: everyone. */
+  departments?: string[] | null
   created_at: string
 }
 

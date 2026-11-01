@@ -39,6 +39,9 @@ export interface ReferencePersistence {
   ): Promise<DbCreateResult<Project>>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
   setProjectSO(actor: Actor, id: string, soNumber: string | null): Promise<DbWrite>
+  setProjectHidden(actor: Actor, id: string, hidden: boolean): Promise<DbWrite>
+  /** Empty clears the scope (open to every department). */
+  setProjectDepartments(actor: Actor, id: string, departments: string[]): Promise<DbWrite>
   deleteProject(actor: Actor, id: string): Promise<DbWrite>
 
   // --- activity types ---

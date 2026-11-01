@@ -18,8 +18,12 @@ interface ProjectRow {
   name: string
   so_number: string | null
   is_timesheet_project: boolean
+  is_hidden: boolean
+  departments: string[] | null
   created_at: string
 }
+
+const PROJECT_COLS = 'id, name, so_number, is_timesheet_project, is_hidden, departments'
 
 interface ActivityTypeRow {
   id: string
@@ -84,7 +88,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listProjects(_actor: Actor): Promise<Project[]> {
     const rows = await query<ProjectRow>(
-      'select id, name, so_number, is_timesheet_project, created_at from public.projects order by name'
+      `select ${PROJECT_COLS}, created_at from public.projects order by name`
     )
     return rows as Project[]
   },
@@ -103,7 +107,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
         ? nameOrInput.soNumber
         : options?.soNumber)?.trim() || null
     return writeReturning<Project>(
-      'insert into public.projects (name, so_number) values ($1, $2) returning id, name, so_number, is_timesheet_project, created_at::text as created_at',
+      `insert into public.projects (name, so_number) values ($1, $2) returning ${PROJECT_COLS}, created_at::text as created_at`,
       [name, soNumber]
     )
   },
@@ -120,6 +124,23 @@ export const nativeReferencePersistence: ReferencePersistence = {
       return { error: 'You do not have permission to perform this action.' }
     }
     return write('update public.projects set so_number = $1 where id = $2', [soNumber, id])
+  },
+
+  async setProjectHidden(actor: Actor, id: string, hidden: boolean): Promise<DbWrite> {
+    if (!hasPermission(actor, ['admin', 'pm'])) {
+      return { error: 'You do not have permission to perform this action.' }
+    }
+    return write('update public.projects set is_hidden = $1 where id = $2', [hidden, id])
+  },
+
+  async setProjectDepartments(actor: Actor, id: string, departments: string[]): Promise<DbWrite> {
+    if (!hasPermission(actor, ['admin', 'pm'])) {
+      return { error: 'You do not have permission to perform this action.' }
+    }
+    const names = [...new Set(departments.map(d => d.trim()).filter(Boolean))]
+    const known = await query<{ c: number }>('select count(*)::int as c from public.departments where name = any($1)', [names])
+    if ((known[0]?.c ?? 0) !== names.length) return { error: 'Choose departments from the list.' }
+    return write('update public.projects set departments = $1 where id = $2', [names.length ? names : null, id])
   },
 
   async deleteProject(actor: Actor, id: string): Promise<DbWrite> {
@@ -230,6 +251,10 @@ export const nativeReferencePersistence: ReferencePersistence = {
           'update public.profiles set scope_departments = array_replace(scope_departments, $2, $1) where $2 = any(scope_departments)',
           [clean, old]
         )
+        await client.query(
+          'update public.projects set departments = array_replace(departments, $2, $1) where $2 = any(departments)',
+          [clean, old]
+        )
         return { error: null }
       })
     } catch (err) {
@@ -253,6 +278,9 @@ export const nativeReferencePersistence: ReferencePersistence = {
         // Removing a scope's last department would leave that admin unrestricted.
         const scoped = await client.query<{ n: number }>('select count(*)::int as n from public.profiles where $1 = any(scope_departments)', [row.name])
         if ((scoped.rows[0]?.n ?? 0) > 0) return { error: `Remove ${row.name} from admin department access first.` }
+        // Removing a project's last department would open it to everyone.
+        const projects = await client.query<{ n: number }>('select count(*)::int as n from public.projects where $1 = any(departments)', [row.name])
+        if ((projects.rows[0]?.n ?? 0) > 0) return { error: `Remove ${row.name} from project departments first.` }
         await client.query('delete from public.departments where id = $1', [id])
         return { error: null }
       })

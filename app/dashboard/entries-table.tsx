@@ -27,6 +27,7 @@ export default function EntriesTable({
   userId,
   pagination,
   totalCount,
+  totalHours = null,
   loading,
   readError,
   scope,
@@ -53,6 +54,8 @@ export default function EntriesTable({
   userId?: string
   pagination: EntriesPage
   totalCount: number | null
+  /** Hours of the selected user, or of the current user when unfiltered. */
+  totalHours?: number | null
   loading: boolean
   readError: string | null
   scope: string
@@ -684,13 +687,11 @@ export default function EntriesTable({
   return (
     <Card
       title={canFilterByUser ? 'Recent Entries' : 'My Recent Entries'}
-      subtitle={
-        canFilterByUser && userFilter
-          ? `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'} · ${
-              users.find(u => u.id === userFilter)?.name || 'selected user'
-            }`
-          : `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'}`
-      }
+      subtitle={[
+        `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'}`,
+        totalHours !== null && `${canFilterByUser && !userFilter ? 'You: ' : ''}${Number(totalHours.toFixed(2))} h logged`,
+        canFilterByUser && userFilter && (users.find(u => u.id === userFilter)?.name || 'selected user'),
+      ].filter(Boolean).join(' · ')}
       icon={<IconDocument className="h-4.5 w-4.5" />}
        bodyClassName="p-0"
        collapsible={collapsible}
@@ -755,7 +756,7 @@ export default function EntriesTable({
               )}
             </div>
             </div>
-          <div className="max-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
+          <div className="max-h-[calc(100dvh-14rem)] min-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
           {loading && <LoadingState label="Loading entries…" />}
           {!loading && !readError && timesheets.length === 0 && <EmptyState className="m-5" icon={<IconClock className="h-5 w-5" />} title="No entries found" description="Try another user filter or log an entry." />}
            <table className="w-full text-sm">

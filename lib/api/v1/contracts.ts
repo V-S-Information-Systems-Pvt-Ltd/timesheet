@@ -83,6 +83,8 @@ export function mapProjectDto(project: Project): ProjectDto {
   // Only mark ineligible projects; absence means eligible, so eligible-project
   // responses stay byte-identical for older clients and existing assertions.
   if (project.is_timesheet_project === false) dto.is_timesheet_project = false
+  if (project.is_hidden) dto.is_hidden = true
+  if (project.departments?.length) dto.departments = project.departments
   return dto
 }
 

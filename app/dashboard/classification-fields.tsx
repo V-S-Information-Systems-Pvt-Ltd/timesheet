@@ -115,7 +115,7 @@ export default function ClassificationFields({ value, onChange, projects, fieldE
       </Select>
     </Field>
     {value.entryType === 'project' && <Field label="Project" id={`${idPrefix}-project`} error={fieldErrors.projectId?.[0]}>
-      <ProjectPicker inputId={`${idPrefix}-project`} projects={projects.filter(p => p.is_timesheet_project !== false)} value={value.projectId} onChange={next => change('projectId', next)} required />
+      <ProjectPicker inputId={`${idPrefix}-project`} projects={projects.filter(p => p.is_timesheet_project !== false && (!p.is_hidden || p.id === value.projectId))} value={value.projectId} onChange={next => change('projectId', next)} required />
     </Field>}
     {value.entryType && <Field label="Activity" id={`${idPrefix}-activity`} error={fieldErrors.activityCode?.[0]}>
       <Select id={`${idPrefix}-activity`} value={value.activityCode} onChange={e => change('activityCode', e.target.value)} required>

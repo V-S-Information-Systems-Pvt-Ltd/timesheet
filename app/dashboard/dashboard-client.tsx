@@ -63,13 +63,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const initialScope = seed.session && seed.profile?.is_active
     ? dashboardPageScope(0, seed.session.id, seed.page) : ''
   const [initialPage] = useState<TimesheetPageState>(() => ({
-    scope: initialScope, rows: seed.entries.data?.rows ?? [], count: seed.entries.data?.count ?? null,
+    scope: initialScope, rows: seed.entries.data?.rows ?? [], count: seed.entries.data?.count ?? null, hours: seed.entries.data?.hours ?? null,
     loading: !seed.session, error: seed.entries.error,
   }))
   const router = useRouter()
   const [user, setUser] = useState<ClientSessionUser | null>(seed.session)
   const [profile, setProfile] = useState<User | null>(seed.profile)
-  const [projects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
+  const [allProjects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>((seed.activityTypes.data ?? []).filter(a => !a.entry_type))
   const [timesheets, setTimesheets] = useState<Timesheet[]>(initialPage.rows)
   const [pageState, setPageState] = useState<TimesheetPageState>(initialPage)
@@ -126,6 +126,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     setBusyTimesheetIds(new Set(mutationLocks))
   }, [mutationLocks, monthTotalsRequest, authEpoch])
   const searchParams = useSearchParams()
+  // Projects outside the viewer's department act as hidden for them: pickers
+  // drop them (an edit keeps its current one); names still resolve. The server
+  // enforces the same rule on writes. ProjectManager gets the real rows.
+  const department = profile?.department
+  const projects = useMemo(() => allProjects.map(p =>
+    p.departments?.length && !(department && p.departments.includes(department)) ? { ...p, is_hidden: true } : p
+  ), [allProjects, department])
   const role = profile?.role ?? 'user'
   const permission = profile?.permission_role ?? 'user'
   const hierarchy = profile?.hierarchy_role ?? 'user'
@@ -491,6 +498,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         timesheets={displayedTimesheets}
         pagination={entriesPage}
         totalCount={pageState.scope === pageScope ? pageState.count : null}
+        totalHours={pageState.scope === pageScope ? pageState.hours ?? null : null}
         loading={pageState.scope !== pageScope || pageState.loading}
         readError={pageState.scope === pageScope ? pageState.error : null}
         scope={pageScope}
@@ -550,7 +558,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           backup: <BackupPanel onChanged={refreshTimesheetData} />,
         }
       : {}),
-    ...(canManageProjects ? { 'project-manager': <ProjectManager projects={projects} onChanged={fetchProjects} /> } : {}),
+    ...(canManageProjects ? { 'project-manager': <ProjectManager projects={allProjects} onChanged={fetchProjects} /> } : {}),
     ...(canGenerateReports
       ? { 'report-export': <ReportExport key={authEpoch} isSessionCurrent={isSessionCurrent} allUsers={allUsers} /> }
       : {}),
