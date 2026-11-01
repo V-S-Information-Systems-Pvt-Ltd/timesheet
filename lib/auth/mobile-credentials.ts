@@ -6,6 +6,6 @@ import type { SessionUser } from './index'
 export async function verifyMobileCredentials(
   email: string,
   password: string
-): Promise<{ user: SessionUser | null; error: string | null }> {
+): Promise<{ user: SessionUser | null; error: string | null; sessionVersion?: number }> {
   return signIn(email, password)
 }

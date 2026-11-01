@@ -11,6 +11,7 @@ import { backupTimesheetKey, parseBackup } from '@/lib/backup'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from '../pool'
 import { isOrgAdmin } from '@/lib/roles'
+import { visibleUserClause } from './visibility'
 import type {
   Actor,
   DbWrite,
@@ -72,6 +73,12 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     if (!isOrgAdmin(actor)) {
       return { payload: null, error: 'You do not have permission to perform this action.' }
     }
+    // Test users stay hidden from everyone but the super admin, as elsewhere.
+    const visible = (column: string) => {
+      const params: unknown[] = []
+      return { where: visibleUserClause(actor, column, params, { departments: false }), params }
+    }
+    const [vUsers, vTimesheets, vLeaves, vReminders] = [visible('id'), visible('user_id'), visible('user_id'), visible('user_id')]
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
       query<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean }>(
         'select id, name, so_number, is_timesheet_project from public.projects order by name'
@@ -79,15 +86,18 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       query<{ id: string; name: string; is_active: boolean; entry_type: BackupActivityType['entry_type']; code: string | null }>(
         'select id, name, is_active, entry_type, code from public.activity_types order by name'
       ),
-      query<{ id: string; email: string }>('select id, lower(email) as email from public.profiles'),
+      query<{ id: string; email: string }>(`select id, lower(email) as email from public.profiles where ${vUsers.where}`, vUsers.params),
       query<Timesheet>(
-        'select user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, customer, log_date, hours_worked, work_done from public.timesheets order by log_date'
+        `select user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, customer, log_date, hours_worked, work_done from public.timesheets where ${vTimesheets.where} order by log_date`,
+        vTimesheets.params
       ),
       query<{ user_id: string; leave_date: string; reason: string }>(
-        'select user_id, leave_date, reason from public.leaves order by leave_date'
+        `select user_id, leave_date, reason from public.leaves where ${vLeaves.where} order by leave_date`,
+        vLeaves.params
       ),
       query<{ user_id: string; message: string; remind_at: string; done: boolean }>(
-        'select user_id, message, remind_at, done from public.reminders order by remind_at'
+        `select user_id, message, remind_at, done from public.reminders where ${vReminders.where} order by remind_at`,
+        vReminders.params
       ),
       query<{ message: string; remind_at: string; display_as_banner: boolean }>(
         'select message, remind_at, display_as_banner from public.global_reminders order by remind_at'
@@ -208,7 +218,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       const existingEntries =
         relevantUserIds.length > 0 && relevantDates.length > 0
           ? await client.query<Timesheet>(
-              'select user_id, log_date, project_id, activity_type_id, hours_worked, entry_type, activity_code, activity_other, ticket_number from public.timesheets where user_id = any($1::uuid[]) and log_date = any($2::date[])',
+              'select user_id, log_date, project_id, activity_type_id, hours_worked, entry_type, activity_code, activity_other, ticket_number, customer, work_done from public.timesheets where user_id = any($1::uuid[]) and log_date = any($2::date[])',
               [relevantUserIds, relevantDates]
             )
           : { rows: [] }

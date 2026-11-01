@@ -1,7 +1,7 @@
 // tests/backup.test.ts
 // Parser/validation tests for the admin Backup & Restore JSON format.
 import { describe, expect, it } from 'vitest'
-import { parseBackup } from '../lib/backup'
+import { MAX_TIMESHEETS, parseBackup } from '../lib/backup'
 import type { BackupPayload } from '../app/types'
 
 const validDoc = (): BackupPayload => ({
@@ -93,7 +93,7 @@ describe('parseBackup', () => {
 
   it('rejects oversized backups', () => {
     const doc = validDoc()
-    for (let i = 0; i < 5001; i++) {
+    for (let i = 0; i <= MAX_TIMESHEETS; i++) {
       doc.timesheets.push({
         email: `u${i}@x.com`,
         log_date: '2026-08-19',

@@ -14,7 +14,7 @@ import type {
   BackupTimesheet,
 } from '@/app/types'
 import { storedEntrySchema, normalizeClassification, isEntryType, isActivityCode } from '@vsis/contracts'
-import { isValidISODate } from '@/lib/validation'
+import { isValidISODate, sanitizeWorkDone } from '@/lib/validation'
 
 export interface BackupValidationResult {
   ok: boolean
@@ -22,15 +22,22 @@ export interface BackupValidationResult {
   error?: string
 }
 
-/** Identical restore identity across parser/native; details distinguish tickets/activities. */
+/** Identical restore identity across parser/native; details distinguish
+ * tickets/activities, and the description and customer keep separate entries
+ * for the same slot apart. Work done is keyed as restore stores it. */
 export function backupTimesheetKey(user: string, date: string, project: string | null, activity: string | null, hours: number,
-  classification: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number'>): string {
-  return JSON.stringify([user, date, project, activity, hours, classification.entry_type ?? null,
-    classification.activity_code ?? null, classification.activity_other ?? null, classification.ticket_number ?? null])
+  details: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number' | 'customer' | 'work_done'>): string {
+  return JSON.stringify([user, date, project, activity, hours, details.entry_type ?? null,
+    details.activity_code ?? null, details.activity_other ?? null, details.ticket_number ?? null,
+    details.customer ?? null, sanitizeWorkDone(details.work_done ?? '') || 'restored entry'])
 }
 
-const MAX_TIMESHEETS = 5000
-const MAX_ROWS = 20000
+// Sized so the restore route's 20 MB body cap (~50k timesheet rows), not these
+// counts, is what limits a backup; at 5000 the app's own export stopped
+// restoring once it held more entries than that.
+// ponytail: one-file restore tops out at ~20 MB; chunked export/restore if data outgrows it.
+export const MAX_TIMESHEETS = 100_000
+const MAX_ROWS = 200_000
 
 /** Text-length bounds matching the leaves/reminders DB CHECK constraints
  * (db/migrations/0017). Legacy backups
@@ -151,7 +158,8 @@ export function parseBackup(input: unknown): BackupValidationResult {
       }
     }
     // JSON tuples avoid delimiter collisions in free-text details and project names.
-    const key = backupTimesheetKey(email, date, project, activityType, hours, classification)
+    const workDone = cleanString(r?.work_done)
+    const key = backupTimesheetKey(email, date, project, activityType, hours, { ...classification, work_done: workDone })
     if (seenEntries.has(key)) continue
     seenEntries.add(key)
     timesheets.push({
@@ -161,7 +169,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
       activity_type: activityType,
       ...classification,
       hours_worked: hours,
-      work_done: cleanString(r?.work_done),
+      work_done: workDone,
     })
   }
 

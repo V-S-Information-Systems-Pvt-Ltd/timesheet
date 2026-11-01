@@ -96,6 +96,21 @@ describe('native auth session_version invalidation and post-reset sign-in', () =
     expect(sessionUser).toEqual({ ...testUser, sessionVersion: 1 })
   })
 
+  it('upgrades a legacy hash only if it is still the stored hash', async () => {
+    const password = 'legacy-password'
+    const [, , , , salt, hash] = (await hashPassword(password)).split('$')
+    const legacyHash = `${salt}:${hash}`
+    mockQuery.mockResolvedValueOnce([{ ...testUser, password_hash: legacyHash, session_version: 0 }])
+    mockQuery.mockResolvedValueOnce([])
+
+    const result = await signIn(testUser.email, password)
+    expect(result.error).toBeNull()
+    // A reset that committed meanwhile changed password_hash; the guard makes this a no-op.
+    const [sql, params] = mockQuery.mock.calls[1]
+    expect(sql).toContain('and password_hash = $3')
+    expect(params).toEqual([expect.stringMatching(/^scrypt\$/), testUser.id, legacyHash])
+  })
+
   it('returns null when session cookie is absent or malformed', async () => {
     mockCookiesStore.get.mockReturnValue(undefined)
     expect(await nativeAuth.getSessionUser()).toBeNull()
