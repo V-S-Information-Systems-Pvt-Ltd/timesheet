@@ -27,10 +27,12 @@ describe('lib/branding', () => {
     // Accessible colors
     expect(isAccessiblePrimaryColor('#1E73BE')).toBe(true) // VSIS Blue
     expect(isAccessiblePrimaryColor('#4F46E5')).toBe(true) // Indigo 600
-    expect(isAccessiblePrimaryColor('#0D9488')).toBe(true) // Teal 600
+    expect(isAccessiblePrimaryColor('#0F766E')).toBe(true) // Teal 700
     expect(isAccessiblePrimaryColor('#DC2626')).toBe(true) // Red 600
 
     // Inaccessible colors
+    expect(isAccessiblePrimaryColor('#0D9488')).toBe(false) // Teal 600 (3.7:1, fails small white button text)
+    expect(isAccessiblePrimaryColor('#E8710A')).toBe(false) // Orange (3.1:1, passed the old 3:1 gate)
     expect(isAccessiblePrimaryColor('#FFFFFF')).toBe(false) // Pure white (no contrast on white text)
     expect(isAccessiblePrimaryColor('#FFFF00')).toBe(false) // Pure yellow (fails contrast on white text)
     expect(isAccessiblePrimaryColor('#000000')).toBe(false) // Pure black (fails contrast on dark theme bg)
@@ -41,13 +43,13 @@ describe('lib/branding', () => {
   it('validates app name, primary color, and logo URL', () => {
     const valid = validateBranding({
       appName: 'Acme Timesheet',
-      primaryColor: '#0D9488',
+      primaryColor: '#0F766E',
       logoUrl: 'https://example.com/logo.png',
     })
     expect(valid.valid).toBe(true)
     expect(valid.data).toEqual({
       appName: 'Acme Timesheet',
-      primaryColor: '#0D9488',
+      primaryColor: '#0F766E',
       logoUrl: 'https://example.com/logo.png',
     })
   })

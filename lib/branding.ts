@@ -41,7 +41,8 @@ export function getContrastRatio(hex1: string, hex2: string): number {
 
 /**
  * Verifies that a primary color maintains accessible action contrast.
- * White text (#FFFFFF) on the primary color button must achieve at least 3.0:1 contrast,
+ * White text (#FFFFFF) on the primary color must achieve at least 4.5:1 contrast,
+ * since button labels and avatar initials are 12–14px (normal text under WCAG 1.4.3),
  * and the color must achieve at least 1.8:1 contrast on dark surface (#0F172A).
  */
 export function isAccessiblePrimaryColor(hex: string): boolean {
@@ -49,7 +50,7 @@ export function isAccessiblePrimaryColor(hex: string): boolean {
   const contrastWithWhite = getContrastRatio(hex, '#FFFFFF')
   const contrastWithDark = getContrastRatio(hex, '#0F172A')
 
-  return contrastWithWhite >= 3.0 && contrastWithDark >= 1.8
+  return contrastWithWhite >= 4.5 && contrastWithDark >= 1.8
 }
 
 export interface BrandingValidationResult {

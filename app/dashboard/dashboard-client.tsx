@@ -687,6 +687,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       customizer={customizer}
     >
       <div className={activeTab === 'team' || WIDE_PANELS.has(activePanel ?? '') ? undefined : 'max-w-4xl'}>
+      {/* Panels title themselves with card headings; the page still needs one top-level heading. */}
+      <h1 className="sr-only">{breadcrumb.filter(Boolean).join(': ')}</h1>
       {dataError && (
         <Alert tone="error" className="mb-6 flex items-start gap-2.5">
           <IconAlert className="mt-0.5 h-4.5 w-4.5 shrink-0" />

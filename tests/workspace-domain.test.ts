@@ -373,7 +373,7 @@ describe('workspace domain — branding defaults, validation, and reset', () => 
   it('reads configured branding for an active actor and maps provider errors', async () => {
     const { persistence, deps } = makeDeps()
     persistence.getBranding.mockResolvedValue({
-      data: { appName: 'Acme', primaryColor: '#0D9488', logoUrl: null },
+      data: { appName: 'Acme', primaryColor: '#0F766E', logoUrl: null },
       error: null,
     })
     const ok = await getWorkspaceBranding(engineer, deps)
@@ -414,14 +414,14 @@ describe('workspace domain — branding defaults, validation, and reset', () => 
 
     const allowed = await saveWorkspaceBranding(
       superAdmin,
-      { appName: '  Acme  ', primaryColor: '#0d9488', logoUrl: 'https://cdn.example.com/logo.png' },
+      { appName: '  Acme  ', primaryColor: '#0f766e', logoUrl: 'https://cdn.example.com/logo.png' },
       deps
     )
     expect(allowed.ok).toBe(true)
     if (allowed.ok) expect(allowed.data.appName).toBe('Acme')
     expect(persistence.setBranding).toHaveBeenCalledWith(superAdmin, {
       appName: 'Acme',
-      primaryColor: '#0D9488',
+      primaryColor: '#0F766E',
       logoUrl: 'https://cdn.example.com/logo.png',
     })
   })

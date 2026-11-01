@@ -443,7 +443,7 @@ test('classification branches clear stale fields and failed creates retain their
   await form.getByLabel('Type', { exact: true }).selectOption('project')
   await form.getByLabel('Project', { exact: true }).click()
   await expect(form.getByRole('listbox', { name: 'Projects', exact: true }).getByRole('option', { name: /Internal/ })).toHaveCount(0)
-  await form.getByRole('button', { name: /Project B/ }).click()
+  await form.getByRole('option', { name: /Project B/ }).click()
   await form.getByLabel('Activity', { exact: true }).selectOption('planning')
   await form.getByLabel('Type', { exact: true }).selectOption('support')
   await expect(form.getByLabel('Project', { exact: true })).toHaveCount(0)

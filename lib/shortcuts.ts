@@ -50,3 +50,23 @@ export const SHORTCUTS: ShortcutSection[] = [
   { section: 'Table', keys: 'D', description: 'Duplicate selected entries' },
   { section: 'General', keys: 'Esc', description: 'Close drawer / modal' },
 ]
+
+const SHORTCUTS_OFF_KEY = 'timesheet.shortcuts-off'
+
+/** Single-key shortcuts can be switched off per browser (WCAG 2.1.4). */
+export function shortcutsEnabled(): boolean {
+  try {
+    return localStorage.getItem(SHORTCUTS_OFF_KEY) !== '1'
+  } catch {
+    return true
+  }
+}
+
+export function setShortcutsEnabled(on: boolean): void {
+  try {
+    if (on) localStorage.removeItem(SHORTCUTS_OFF_KEY)
+    else localStorage.setItem(SHORTCUTS_OFF_KEY, '1')
+  } catch {
+    // Storage blocked: the toggle lasts for this page only.
+  }
+}

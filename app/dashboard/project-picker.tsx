@@ -152,20 +152,16 @@ export default function ProjectPicker({
                 role="option"
                 aria-selected={p.id === value}
                 onMouseEnter={() => setActiveIndex(i)}
+                // Keep focus on the input so the picker stays open until a click.
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => choose(p.id)}
+                className={cn(
+                  'flex min-h-11 cursor-pointer items-center px-3 py-2 text-sm transition-colors hover:bg-muted md:min-h-0',
+                  i === activeIndex && 'bg-primary-50 text-primary-text dark:bg-primary-900/30',
+                  p.id === value && 'font-medium'
+                )}
               >
-                <button
-                  type="button"
-                  // Keep focus on the input so the picker stays open until a click.
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={() => choose(p.id)}
-                  className={cn(
-                    'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
-                    i === activeIndex && 'bg-primary-50 text-primary-text dark:bg-primary-900/30',
-                    p.id === value && 'font-medium'
-                  )}
-                >
-                  {p.name}
-                </button>
+                {p.name}
               </li>
             ))
           )}

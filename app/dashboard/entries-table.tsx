@@ -5,7 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { dataClient } from '@/lib/data/client'
 import { readTimesheetHistory, selectedSnapshotRows, type EntriesPage } from '@/lib/dashboard-timesheets'
 import { addDaysISO } from '@vsis/core'
-import { isFormField } from '@/lib/shortcuts'
+import { isFormField, shortcutsEnabled } from '@/lib/shortcuts'
 import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Input, LoadingState, Menu, Select, Spinner, Td, Th } from '@/app/components/ui'
@@ -667,7 +667,7 @@ export default function EntriesTable({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.altKey || e.ctrlKey) return
+      if (e.metaKey || e.altKey || e.ctrlKey || !shortcutsEnabled()) return
       if (document.querySelector('[data-shortcuts-modal]')) return
       // Never fire table shortcuts underneath a modal (bulk edit, confirm).
       if (Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
