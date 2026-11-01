@@ -7,6 +7,7 @@ import type { HierarchyRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { buildHierarchyTree, type HierarchyTreeNode } from '@/lib/hierarchy'
 import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
+import { Monogram } from '@/app/components/workspace'
 import type { TeamViewKey } from '@/lib/navigation'
 import { IconUsers, IconChevronDown, IconChevronRight } from '@/app/components/icons'
 
@@ -90,9 +91,7 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
               <div className="w-11 shrink-0 md:w-9" />
             )}
 
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">
-              {(u.name || u.email || 'U')[0].toUpperCase()}
-            </div>
+            <Monogram name={u.name} email={u.email} tone="primary" size="sm" />
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
