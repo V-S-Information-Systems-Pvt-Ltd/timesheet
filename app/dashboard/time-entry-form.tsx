@@ -228,7 +228,7 @@ function LocalTimeEntryForm({
             />
             {splitPreview && <p id="hours-split-hint" className="mt-1 text-xs text-fg-muted">{splitPreview}</p>}
             {smartHours !== null && !hours && (
-              <button type="button" onClick={handleQuickFillHours} className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-primary-text hover:underline md:min-h-0">
+              <button type="button" onClick={handleQuickFillHours} className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-primary-text hover:underline md:min-h-6">
                 Quick-fill {smartHours}h
               </button>
             )}

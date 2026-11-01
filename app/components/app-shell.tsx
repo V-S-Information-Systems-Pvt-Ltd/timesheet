@@ -416,7 +416,7 @@ export function AppShell({
       >
         <div data-shortcuts-modal>
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
-            <h3 id="shortcuts-title" className="font-display text-sm font-semibold tracking-tight text-fg">Keyboard shortcuts</h3>
+            <h2 id="shortcuts-title" className="font-display text-sm font-semibold tracking-tight text-fg">Keyboard shortcuts</h2>
             <IconButton size="sm" label="Close shortcuts" onClick={() => setShortcutsOpen(false)}>
               <IconX className="h-4 w-4" />
             </IconButton>
@@ -429,7 +429,7 @@ export function AppShell({
               }, {})
             ).map(([section, items]) => (
               <div key={section} className="mb-4 last:mb-0">
-                <h4 className="mb-2 text-xs font-semibold text-fg-subtle">{section}</h4>
+                <h3 className="mb-2 text-xs font-semibold text-fg-subtle">{section}</h3>
                 <div className="space-y-1.5">
                   {items.map((s, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">

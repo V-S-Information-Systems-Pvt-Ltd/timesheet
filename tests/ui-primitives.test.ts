@@ -61,9 +61,9 @@ describe('new primitives (P0)', () => {
     expect(html).toContain('accent-primary-600')
   })
 
-  it('bare Checkbox pads its hit area to 44px on phones without growing the box', () => {
+  it('bare Checkbox pads its hit area to 44px on phones and 24px on desktop without growing the box', () => {
     const html = renderToStaticMarkup(createElement(Checkbox, { 'aria-label': 'Select row' }))
-    expect(html).toMatch(/^<label class="[^"]*\bp-3\.5\b[^"]*\bmd:p-0\b/)
+    expect(html).toMatch(/^<label class="[^"]*\bp-3\.5\b[^"]*\bmd:p-1\b/)
     expect(html).toContain('h-4 w-4')
     expect(html).toContain('aria-label="Select row"')
   })

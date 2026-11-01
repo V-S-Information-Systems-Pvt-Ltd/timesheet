@@ -13,7 +13,7 @@ function required(name: string): string {
 test.describe('Critical paths', () => {
   test('homepage loads and shows login', async ({ page }) => {
     await page.goto('/')
-    // Scoped to the form: the page also renders a "Sign In" tab button.
+    // Scoped to the form: the sign-in mode toggle sits outside it.
     await expect(page.locator('form').getByRole('button', { name: 'Sign In' })).toBeVisible()
   })
 

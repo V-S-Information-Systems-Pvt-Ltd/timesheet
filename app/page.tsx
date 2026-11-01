@@ -93,8 +93,9 @@ export default function WelcomePage() {
               value={mode}
               onChange={switchMode}
               options={[
-                { key: 'signin', label: 'Sign In' },
-                { key: 'signup', label: 'Create Account' },
+                // Distinct from the submit button's "Sign In" / "Create Account" so each control has its own name.
+                { key: 'signin', label: 'Existing account' },
+                { key: 'signup', label: 'New account' },
               ]}
               className="mb-6 w-full"
             />

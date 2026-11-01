@@ -218,6 +218,11 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* A frozen spinner reads as a hang; keep it turning, slowly. */
+  .animate-spin {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* Tailwind v4 preflight gives buttons the default cursor; restore the pointer. */
