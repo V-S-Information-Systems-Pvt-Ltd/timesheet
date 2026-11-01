@@ -163,7 +163,7 @@ export default function HierarchyEditor({
                     </div>
                     <div className="text-xs text-fg-muted">{u.email}</div>
                     {u.department && (
-                      <div className="text-[11px] text-fg-muted">{u.department}</div>
+                      <div className="text-xs text-fg-muted">{u.department}</div>
                     )}
                   </Td>
                   <Td label="Title" className="min-w-48">

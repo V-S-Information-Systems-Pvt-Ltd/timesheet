@@ -343,20 +343,17 @@ export function Autocomplete({
               role="option"
               aria-selected={i === activeIndex}
               onMouseEnter={() => setActiveIndex(i)}
+              // Options are not buttons: focus stays in the input, which owns the keyboard.
+              onMouseDown={(e) => {
+                e.preventDefault()
+                select(opt)
+              }}
+              className={cn(
+                'flex min-h-11 cursor-pointer items-center px-3 py-2 text-sm transition-colors hover:bg-muted md:min-h-0',
+                i === activeIndex && 'bg-primary-50 dark:bg-primary-900/30 font-medium text-primary-text'
+              )}
             >
-              <button
-                type="button"
-                className={cn(
-                  'block min-h-11 w-full px-3 py-2 text-left md:min-h-0 text-sm transition-colors hover:bg-muted',
-                  i === activeIndex && 'bg-primary-50 dark:bg-primary-900/30 font-medium text-primary-text'
-                )}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  select(opt)
-                }}
-              >
-                {opt}
-              </button>
+              {opt}
             </li>
           ))}
         </ul>
@@ -478,7 +475,7 @@ export function RoleBadge({ role, className }: { role: UserRole; className?: str
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset',
         ROLE_BADGES[role] ?? ROLE_BADGES.user,
         className
       )}
@@ -507,7 +504,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset',
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
         tones[tone],
         className
       )}

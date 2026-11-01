@@ -7,6 +7,7 @@ import type { HierarchyRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { buildHierarchyTree, type HierarchyTreeNode } from '@/lib/hierarchy'
 import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
+import { Monogram } from '@/app/components/workspace'
 import type { TeamViewKey } from '@/lib/navigation'
 import { IconUsers, IconChevronDown, IconChevronRight } from '@/app/components/icons'
 
@@ -66,15 +67,16 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
     const u = node.item
     const hasChildren = node.children.length > 0
     const isExpanded = (node.depth === 0) !== toggledIds.has(u.id)
-    const paddingLeft = `${node.depth * 1.5}rem`
 
     return (
       <div key={u.id} className="space-y-1">
+        {/* Half-step indent on phones keeps deep levels inside the viewport; the
+            action group wraps under the name instead of pushing past the edge. */}
         <div
-          className="flex items-center justify-between rounded-control border border-line bg-card p-3 hover:border-border"
-          style={{ marginLeft: paddingLeft }}
+          className="ml-[calc(var(--depth)*0.75rem)] flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-control border border-line bg-card p-3 hover:border-border sm:ml-[calc(var(--depth)*1.5rem)]"
+          style={{ '--depth': node.depth } as React.CSSProperties}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 grow basis-60 items-center gap-2">
             {hasChildren ? (
               <IconButton
                 size="sm"
@@ -86,22 +88,20 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
                 {isExpanded ? <IconChevronDown className="h-4 w-4" /> : <IconChevronRight className="h-4 w-4" />}
               </IconButton>
             ) : (
-              <div className="h-6 w-6" />
+              <div className="w-11 shrink-0 md:w-9" />
             )}
 
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">
-              {(u.name || u.email || 'U')[0].toUpperCase()}
-            </div>
+            <Monogram name={u.name} email={u.email} tone="primary" size="sm" />
 
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="font-semibold text-fg">{u.name || 'No name'}</span>
                 {renderRoleBadge(u)}
                 {node.isOrphan && (
                   <Badge tone="amber">Orphan</Badge>
                 )}
               </div>
-              <div className="text-xs text-fg-muted">
+              <div className="break-words text-xs text-fg-muted">
                 {u.email}
                 {u.title ? ` • ${u.title}` : ''}
                 {u.department ? ` • ${u.department}` : ''}
@@ -109,7 +109,7 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {hasChildren && (
               <span className="text-xs font-medium text-fg-muted">
                 {node.children.length} direct {node.children.length === 1 ? 'report' : 'reports'}

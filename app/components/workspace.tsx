@@ -56,14 +56,14 @@ export function Monogram({ name, email, tone = 'neutral', dot, size = 'md' }: {
   tone?: 'neutral' | 'warning' | 'primary'
   /** Small status dot in the corner: true = on, false = off. */
   dot?: boolean
-  size?: 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg'
 }) {
   return (
     <span
       aria-hidden
       className={cn(
         'relative grid shrink-0 place-items-center rounded-full font-semibold',
-        size === 'lg' ? 'h-11 w-11 text-sm' : 'h-9 w-9 text-xs',
+        size === 'lg' ? 'h-11 w-11 text-sm' : size === 'sm' ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-xs',
         tone === 'primary' && 'bg-primary-600 text-white',
         tone === 'warning' && 'bg-warning-surface text-warning-text',
         tone === 'neutral' && 'bg-muted text-fg',
