@@ -9,6 +9,7 @@ import {
   REPORT_GROUP_BYS,
   getReportTotals,
   listReportCsvPage,
+  listReportLeaves,
   resolveReportExportScope,
   resolveReportTotalsQuery,
 } from '@/lib/domain/reporting'
@@ -44,10 +45,30 @@ function makeDeps(overrides: Partial<ReportingPersistence> = {}) {
   const persistence: ReportingPersistence = {
     getGroupedReportTotals: vi.fn().mockResolvedValue([]),
     listTimesheets: vi.fn().mockResolvedValue({ rows: [], count: 0 }),
+    listLeaves: vi.fn().mockResolvedValue([]),
     ...overrides,
   }
   return { persistence, clock: () => '2026-08-31' }
 }
+
+describe('listReportLeaves', () => {
+  const actor = { id: 'u1' } as Actor
+
+  it('reads leave for the scoped user and dates', async () => {
+    const deps = makeDeps()
+    await listReportLeaves(actor, { userId: 'u1', dateFrom: '2026-08-01', dateTo: '2026-08-31' }, deps)
+    expect(deps.persistence.listLeaves).toHaveBeenCalledWith(actor, { userId: 'u1', dateFrom: '2026-08-01', dateTo: '2026-08-31' })
+  })
+
+  it.each([{ projectId: 'p1' }, { entryType: 'legacy' as const }, { activityCode: 'customers' as const }])(
+    'skips leave when filtering by %o',
+    async (filter) => {
+      const deps = makeDeps()
+      expect(await listReportLeaves(actor, filter, deps)).toEqual([])
+      expect(deps.persistence.listLeaves).not.toHaveBeenCalled()
+    }
+  )
+})
 
 describe('resolveReportTotalsQuery', () => {
   it('exposes the canonical grouping axes', () => {

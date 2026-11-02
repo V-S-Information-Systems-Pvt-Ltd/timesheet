@@ -3,6 +3,7 @@ import 'server-only'
 import type {
   Actor,
   ReportBucket,
+  ReportLeave,
   ReportTotalsInput,
   TimesheetListResult,
 } from '@/lib/db/types'
@@ -10,6 +11,7 @@ import { isEntryType, isActivityCode } from '@vsis/contracts'
 import type { ActivityCode, EntryType } from '@vsis/contracts'
 import { isValidISODate } from '@/lib/validation'
 import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
+import { reportIncludesLeaves } from '@/lib/reports/csv-export'
 import type { ReportGroupBy, ReportingPersistence } from './reporting-port'
 
 /** Canonical grouping axes accepted by every report transport. */
@@ -188,4 +190,17 @@ export async function listReportCsvPage(
   deps: ReportingDeps
 ): Promise<TimesheetListResult> {
   return deps.persistence.listTimesheets(actor, { ...scope, ...page })
+}
+
+/**
+ * Leave markers for a report export, newest first. Empty when a project or
+ * classification filter is set, since leave belongs to none of them.
+ */
+export async function listReportLeaves(
+  actor: Actor,
+  scope: ReportExportScope['filters'],
+  deps: ReportingDeps
+): Promise<ReportLeave[]> {
+  if (!reportIncludesLeaves(scope)) return []
+  return deps.persistence.listLeaves(actor, { userId: scope.userId, dateFrom: scope.dateFrom, dateTo: scope.dateTo })
 }

@@ -15,6 +15,7 @@ import type { BrowserProfileUpdateInput } from '@vsis/contracts'
 import type { BrowserActivityTypeMutation, BrowserGlobalReminderCreateInput } from '@vsis/contracts'
 import type { ActivityType, AdminPasswordResetResult, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, Department, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
+import type { ReportLeave } from '@/lib/db/types'
 
 export interface TimesheetQuery {
   from?: number
@@ -169,6 +170,7 @@ export interface DataClient {
   deleteGlobalReminder(id: string): Promise<MutationResult>
   dismissGlobalReminder(id: string): Promise<MutationResult>
   getReportTotals(q?: ReportQuery, options?: ReportReadOptions): Promise<ReportTotalsResult>
+  getReportLeaves(opts?: { user?: string; from?: string; to?: string }): Promise<{ data: ReportLeave[] | null; error: string | null }>
 }
 
 // --- shared HTTP transport -------------------------------------------------------
@@ -866,5 +868,14 @@ export const dataClient: DataClient = {
     if (q.activityCode) params.set('activityCode', q.activityCode)
     const qs = params.toString()
     return read<NonNullable<ReportTotalsResult['data']>>(`/api/v1/reports${qs ? `?${qs}` : ''}`, options)
+  },
+
+  async getReportLeaves(opts = {}) {
+    const params = new URLSearchParams()
+    if (opts.user) params.set('user', opts.user)
+    if (opts.from) params.set('from', opts.from)
+    if (opts.to) params.set('to', opts.to)
+    const qs = params.toString()
+    return read<ReportLeave[]>(`/api/v1/reports/leaves${qs ? `?${qs}` : ''}`)
   },
 }

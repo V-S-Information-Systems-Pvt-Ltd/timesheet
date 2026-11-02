@@ -9,7 +9,7 @@ import type { Actor } from '@/lib/db/types'
 import type { Timesheet } from '@/app/types'
 import { CSV_BOM, escapeCsvCell } from '@/lib/csv'
 import { reportingDeps } from '@/lib/db/reporting'
-import { listReportCsvPage, resolveReportExportScope, type RawReportExportQuery } from '@/lib/domain/reporting'
+import { listReportCsvPage, listReportLeaves, resolveReportExportScope, type RawReportExportQuery } from '@/lib/domain/reporting'
 import { formatTimesheetCsvChunk, TIMESHEET_CSV_HEADERS } from './csv-export'
 
 export const CSV_PAGE_SIZE = 500
@@ -30,6 +30,7 @@ export async function buildTimesheetCsvStream(
 ): Promise<{ stream: ReadableStream<Uint8Array>; filename: string; totalCount: number | null }> {
   const deps = reportingDeps()
   const { filters, filename } = resolveReportExportScope(actor, query, deps)
+  const leaves = await listReportLeaves(actor, filters, deps)
 
   let totalCount: number | null = null
   let firstRows: Timesheet[] = []
@@ -40,11 +41,18 @@ export async function buildTimesheetCsvStream(
       { from: 0, to: CSV_PAGE_SIZE - 1, includeCount: true },
       deps
     )
-    totalCount = firstPage.count ?? firstPage.rows.length
+    totalCount = (firstPage.count ?? firstPage.rows.length) + leaves.length
     firstRows = firstPage.rows
   }
 
   const encoder = new TextEncoder()
+  // Both sources are sorted newest first, so each page takes the leave dated at
+  // or after its oldest row and later pages or the end of the file take the rest.
+  const encodePage = (rows: Timesheet[]) => {
+    const oldest = rows[rows.length - 1].log_date
+    const cut = leaves.findIndex((leave) => leave.leave_date < oldest)
+    return encoder.encode(formatTimesheetCsvChunk(rows, false, leaves.splice(0, cut === -1 ? leaves.length : cut)))
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -53,7 +61,7 @@ export async function buildTimesheetCsvStream(
           encoder.encode(CSV_BOM + TIMESHEET_CSV_HEADERS.map(escapeCsvCell).join(',') + '\n')
         )
         if (firstRows.length > 0) {
-          controller.enqueue(encoder.encode(formatTimesheetCsvChunk(firstRows, false)))
+          controller.enqueue(encodePage(firstRows))
         }
 
         let offset = opts.preflight ? CSV_PAGE_SIZE : 0
@@ -68,13 +76,17 @@ export async function buildTimesheetCsvStream(
           )
           const rows = listResult.rows || []
           if (rows.length > 0) {
-            controller.enqueue(encoder.encode(formatTimesheetCsvChunk(rows, false)))
+            controller.enqueue(encodePage(rows))
           }
           if (rows.length < CSV_PAGE_SIZE) {
             hasMore = false
           } else {
             offset += CSV_PAGE_SIZE
           }
+        }
+
+        if (leaves.length > 0) {
+          controller.enqueue(encoder.encode(formatTimesheetCsvChunk([], false, leaves)))
         }
 
         controller.close()
