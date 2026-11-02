@@ -1,5 +1,11 @@
 # Architecture Delta
 
+## 2026-11-02 — Timesheet CSV export layout
+
+- Columns are now `Date, User, Type, Project, Activity, Customer, Ticket Number, Other Activity, Hours, Work Done` for `/api/v1/reports/export` and the browser exports. `Type` is the entry type (or `Legacy`); the old legacy-activity `Type` and the `Entry Type` columns are gone.
+- `Project` is empty for Support/Internal entries, `Activity` no longer carries the type prefix, and all CSV downloads start with a UTF-8 BOM so Excel decodes them correctly.
+- CSV import prefers an `Activity` column over `Type` for the legacy activity type; files with only `Type` behave as before.
+
 ## 2026-10-23 — Admin password reset
 
 - New `POST /api/v1/admin/users/[id]/password-reset` (cookie or bearer, `Cache-Control: no-store`), body `{ mode: 'email' | 'generate' }`. `email` sends the standard reset link (502 `EMAIL_FAILED` if delivery fails); `generate` sets a random 16-character password and returns it once.
