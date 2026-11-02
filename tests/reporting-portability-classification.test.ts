@@ -31,9 +31,8 @@ describe('mixed-format reports', () => {
   })
   it('appends classification details using the existing safe CSV encoder', () => {
     const csv = formatTimesheetCsvChunk([rows[3]], true)
-    expect(csv).toContain('Entry Type,Activity,Ticket Number,Other Activity')
-    expect(csv).toContain('Support — no project')
-    expect(csv).toContain('Support,Support · Customers,"00-A,""b""",')
+    expect(csv).toContain('Type,Project,Activity,Customer,Ticket Number,Other Activity')
+    expect(csv).toContain('Support,,Customers,,"00-A,""b""",,2,work')
   })
 })
 

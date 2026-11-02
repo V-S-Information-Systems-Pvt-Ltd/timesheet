@@ -3,6 +3,7 @@ import 'server-only'
 import type {
   Actor,
   ReportBucket,
+  ReportLeave,
   ReportTotalsInput,
   TimesheetListOptions,
   TimesheetListResult,
@@ -10,6 +11,12 @@ import type {
 
 /** Grouping axis for the scoped report aggregates. */
 export type ReportGroupBy = 'user' | 'project' | 'activity' | 'type'
+
+export interface ReportLeaveFilters {
+  userId?: string
+  dateFrom?: string
+  dateTo?: string
+}
 
 /**
  * Narrow read port owned by the reporting application module. It exposes only
@@ -26,4 +33,6 @@ export interface ReportingPersistence {
     groupBy: ReportGroupBy
   ): Promise<ReportBucket[]>
   listTimesheets(actor: Actor, options: TimesheetListOptions): Promise<TimesheetListResult>
+  /** Every matching leave marker, newest first, under the timesheet read scope. */
+  listLeaves(actor: Actor, filters: ReportLeaveFilters): Promise<ReportLeave[]>
 }

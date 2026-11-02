@@ -110,7 +110,7 @@ describe('domain adapter contracts', () => {
   it('reporting adapters expose the expected methods', () => {
     const nativeMethods = extractMethodNames(nativeReportingPersistence as unknown as Record<string, unknown>)
 
-    expect(nativeMethods).toEqual(['getGroupedReportTotals', 'listTimesheets'])
+    expect(nativeMethods).toEqual(['getGroupedReportTotals', 'listLeaves', 'listTimesheets'])
   })
 
   it('leave and reminders adapters expose the expected methods', () => {

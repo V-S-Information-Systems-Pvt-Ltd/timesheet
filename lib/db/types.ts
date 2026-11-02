@@ -239,3 +239,10 @@ export interface ReportBucket {
   hours: number
   entries: number
 }
+
+/** A leave marker as it appears in a report export. */
+export interface ReportLeave {
+  leave_date: string
+  email: string | null
+  reason: string
+}

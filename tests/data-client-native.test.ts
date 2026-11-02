@@ -707,4 +707,15 @@ describe('backend-neutral data client', () => {
     )
     expect(res.data?.totalHours).toBe(10)
   })
+
+  it('getReportLeaves queries the report leave route and surfaces failures', async () => {
+    const leaves = [{ leave_date: '2026-08-03', email: 'a@b.c', reason: 'Sick' }]
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: leaves, error: null }))
+    const res = await dataClient.getReportLeaves({ user: 'all', from: '2026-08-01' })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/reports/leaves?user=all&from=2026-08-01', expect.any(Object))
+    expect(res.data).toEqual(leaves)
+
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'VALIDATION_ERROR', message: 'Invalid date. Use YYYY-MM-DD.' } }, 400))
+    expect(await dataClient.getReportLeaves({ from: 'nope' })).toMatchObject({ data: null, error: 'Invalid date. Use YYYY-MM-DD.' })
+  })
 })

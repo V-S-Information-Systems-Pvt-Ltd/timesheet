@@ -4,9 +4,10 @@
 // validation, filtering and the totals reduction are owned by the shared
 // reporting application module.
 
-import type { Actor } from '@/lib/db/types'
+import type { Actor, ReportLeave } from '@/lib/db/types'
 import { todayISO } from '@vsis/core'
-import { getReportTotals, resolveReportTotalsQuery } from '@/lib/domain/reporting'
+import { getReportTotals, listReportLeaves, resolveReportExportScope, resolveReportTotalsQuery } from '@/lib/domain/reporting'
+import { isValidISODate } from '@/lib/validation'
 import type { ReportGroupBy } from '@/lib/domain/reporting-port'
 import { reportingDeps } from '@/lib/db/reporting'
 import type { MobileServiceResult } from './_result'
@@ -38,4 +39,23 @@ export async function getReportsService(
   const totals = await getReportTotals(actor, resolved.filters, resolved.groupBy, reportingDeps())
 
   return { success: true, data: totals }
+}
+
+/** Leave markers for a browser-built report, under the same scope as its export. */
+export async function getReportLeavesService(
+  actor: Actor,
+  searchParams: URLSearchParams
+): Promise<MobileServiceResult<ReportLeave[]>> {
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  if ((from && !isValidISODate(from)) || (to && !isValidISODate(to))) {
+    return { success: false, code: 'VALIDATION_ERROR', message: 'Invalid date. Use YYYY-MM-DD.', status: 400 }
+  }
+
+  const deps = reportingDeps()
+  const { filters } = resolveReportExportScope(actor, { user: searchParams.get('user'), from, to }, deps)
+  // Open-ended, like the browser's timesheet history: planned leave is included.
+  const leaves = await listReportLeaves(actor, { ...filters, dateTo: to || undefined }, deps)
+
+  return { success: true, data: leaves }
 }

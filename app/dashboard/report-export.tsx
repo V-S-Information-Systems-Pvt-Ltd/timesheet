@@ -7,7 +7,7 @@ import { dataClient } from '@/lib/data/client'
 import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
 import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
-import { matchesReportClassification, TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
+import { matchesReportClassification, reportCsvRows, reportIncludesLeaves, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconDocument } from '@/app/components/icons'
@@ -42,14 +42,21 @@ export default function ReportExport({
       )
       if (generation.current !== current || !isSessionCurrent()) return
 
+      const leaveResult = reportIncludesLeaves({ entryType, activityCode })
+        ? await dataClient.getReportLeaves({ user: reportUser, from: startDate || undefined, to: endDate || undefined })
+        : { data: [], error: null }
+      if (generation.current !== current || !isSessionCurrent()) return
+      if (leaveResult.error || !leaveResult.data) throw new Error(leaveResult.error || 'Could not load leave for the report.')
+      const leaves = leaveResult.data
+
       const dataToExport = history.filter(t => matchesReportClassification(t, entryType, activityCode))
-      if (dataToExport.length === 0) return toast('No data found for selected criteria.', 'info')
+      if (dataToExport.length === 0 && leaves.length === 0) return toast('No data found for selected criteria.', 'info')
 
       const headers = [...TIMESHEET_CSV_HEADERS]
-      const rows = timesheetCsvRows(dataToExport)
+      const rows = reportCsvRows(dataToExport, leaves)
 
       // Keep the selected range or the full data bounds in the filename.
-      const dates = dataToExport.map(t => t.log_date).sort()
+      const dates = [...dataToExport.map(t => t.log_date), ...leaves.map(l => l.leave_date)].sort()
       const start = startDate || dates[0] || 'all'
       const end = endDate || dates[dates.length - 1] || 'all'
       downloadCSV(`report_${start}_${end}.csv`, headers, rows)

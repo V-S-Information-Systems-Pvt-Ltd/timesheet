@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockRequire, mockListTimesheets } = vi.hoisted(() => ({
+const { mockRequire, mockListTimesheets, mockListLeaves } = vi.hoisted(() => ({
   mockRequire: vi.fn(),
   mockListTimesheets: vi.fn(),
+  mockListLeaves: vi.fn(),
 }))
 
 vi.mock('@/app/api/v1/_http', () => ({
@@ -33,6 +34,7 @@ vi.mock('@/lib/db/reporting', () => ({
   reportingDeps: () => ({
     persistence: {
       listTimesheets: mockListTimesheets,
+      listLeaves: mockListLeaves,
     },
     clock: () => '2026-08-31',
   }),
@@ -88,6 +90,70 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     vi.clearAllMocks()
     mockRequire.mockResolvedValue({ ok: true, actor: adminActor })
     mockListTimesheets.mockResolvedValue({ rows: mockRows, count: 1 })
+    mockListLeaves.mockResolvedValue([])
+  })
+
+  const dataLines = (text: string) => text.trim().split('\n').slice(1).map((line) => line.split(',').slice(0, 3).join(','))
+  const leave = (leave_date: string) => ({ leave_date, email: 'user@vsis.lk', reason: 'Annual' })
+
+  it('merges leave rows by date and counts them', async () => {
+    mockListLeaves.mockResolvedValueOnce([leave('2026-08-31'), leave('2026-08-29')])
+    const res = await exportCsvRoute(new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31'))
+    expect(res.headers.get('X-Total-Count')).toBe('3')
+    const text = await res.text()
+    expect(dataLines(text)).toEqual([
+      '2026-08-31,user@vsis.lk,Leave', '2026-08-30,user@vsis.lk,Legacy', '2026-08-29,user@vsis.lk,Leave',
+    ])
+    expect(text).toContain('2026-08-31,user@vsis.lk,Leave,,,,,,8,Annual')
+  })
+
+  it('keeps leave in date order across timesheet pages', async () => {
+    const page = (log_date: string, size: number) => Array.from({ length: size }, () => ({ ...mockRows[0], log_date }))
+    mockListTimesheets
+      .mockResolvedValueOnce({ rows: page('2026-08-20', 500), count: 501 })
+      .mockResolvedValueOnce({ rows: page('2026-08-10', 1), count: 501 })
+    mockListLeaves.mockResolvedValueOnce([leave('2026-08-25'), leave('2026-08-15'), leave('2026-08-05')])
+    const res = await exportCsvRoute(new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31'))
+    const leaveAndNeighbours = dataLines(await res.text()).map((line) => line.split(',')[0])
+    expect(leaveAndNeighbours).toEqual([...leaveAndNeighbours].sort().reverse())
+    expect(leaveAndNeighbours).toHaveLength(504)
+  })
+
+  it('exports leave for a user with no timesheet rows instead of an empty response', async () => {
+    mockListTimesheets.mockResolvedValue({ rows: [], count: 0 })
+    mockListLeaves.mockResolvedValueOnce([leave('2026-08-29')])
+    const res = await exportCsvRoute(new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31'))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Total-Count')).toBe('1')
+    expect(dataLines(await res.text())).toEqual(['2026-08-29,user@vsis.lk,Leave'])
+  })
+
+  it('leaves leave out of a project-filtered export', async () => {
+    const res = await exportCsvRoute(new Request('http://localhost/api/v1/reports/export?project=p-1&from=2026-08-01&to=2026-08-31'))
+    expect(res.status).toBe(200)
+    expect(mockListLeaves).not.toHaveBeenCalled()
+  })
+
+  it('pins a regular user export to their own leave', async () => {
+    mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
+    await exportCsvRoute(new Request('http://localhost/api/v1/reports/export?user=u-admin&from=2026-08-01&to=2026-08-31'))
+    expect(mockListLeaves).toHaveBeenCalledWith(userActor, expect.objectContaining({ userId: 'u-user' }))
+  })
+
+  it('reads report leave open-ended for a regular user pinned to themselves', async () => {
+    mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
+    mockListLeaves.mockResolvedValueOnce([leave('2099-01-01')])
+    const { getReportLeavesService } = await import('@/lib/api/v1/services/reports')
+    const result = await getReportLeavesService(userActor, new URLSearchParams('user=u-admin'))
+    expect(result).toEqual({ success: true, data: [leave('2099-01-01')] })
+    expect(mockListLeaves).toHaveBeenCalledWith(userActor, { userId: 'u-user', dateFrom: undefined, dateTo: undefined })
+  })
+
+  it('rejects an invalid report leave date', async () => {
+    const { getReportLeavesService } = await import('@/lib/api/v1/services/reports')
+    const result = await getReportLeavesService(userActor, new URLSearchParams('from=nope'))
+    expect(result).toMatchObject({ success: false, code: 'VALIDATION_ERROR', status: 400 })
+    expect(mockListLeaves).not.toHaveBeenCalled()
   })
 
   it('exports timesheets as streamed CSV attachment for admin', async () => {
@@ -99,9 +165,11 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
     expect(res.headers.get('X-Total-Count')).toBe('1')
 
-    const text = await res.text()
-    expect(text).toContain('Date,User,Project,Type,Hours,Work Done')
-    expect(text).toContain('2026-08-30,user@vsis.lk,Project Alpha,Dev,7.5,Implemented privileged reports & export feature')
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    const text = new TextDecoder().decode(bytes)
+    expect(text).toContain('Date,User,Type,Project,Activity,Customer,Ticket Number,Other Activity,Hours,Work Done')
+    expect(text).toContain('2026-08-30,user@vsis.lk,Legacy,Project Alpha,Dev,,,,7.5,Implemented privileged reports & export feature')
   })
 
   it('allows leader to filter by team member', async () => {
@@ -184,7 +252,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
     expect(res.headers.get('Cache-Control')).toBe('no-store, no-cache, must-revalidate')
     expect(res.headers.get('X-Total-Count')).toBeNull()
-    expect(await res.text()).toContain('Date,User,Project,Type,Hours,Work Done')
+    expect(await res.text()).toContain('Date,User,Type,Project,Activity,Customer,Ticket Number,Other Activity,Hours,Work Done')
   })
 
   it('rejects invalid date format with 400', async () => {
