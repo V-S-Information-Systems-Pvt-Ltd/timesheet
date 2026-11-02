@@ -7,7 +7,7 @@
 
 import type { Actor } from '@/lib/db/types'
 import type { Timesheet } from '@/app/types'
-import { escapeCsvCell } from '@/lib/csv'
+import { CSV_BOM, escapeCsvCell } from '@/lib/csv'
 import { reportingDeps } from '@/lib/db/reporting'
 import { listReportCsvPage, resolveReportExportScope, type RawReportExportQuery } from '@/lib/domain/reporting'
 import { formatTimesheetCsvChunk, TIMESHEET_CSV_HEADERS } from './csv-export'
@@ -50,7 +50,7 @@ export async function buildTimesheetCsvStream(
     async start(controller) {
       try {
         controller.enqueue(
-          encoder.encode(TIMESHEET_CSV_HEADERS.map(escapeCsvCell).join(',') + '\n')
+          encoder.encode(CSV_BOM + TIMESHEET_CSV_HEADERS.map(escapeCsvCell).join(',') + '\n')
         )
         if (firstRows.length > 0) {
           controller.enqueue(encoder.encode(formatTimesheetCsvChunk(firstRows, false)))

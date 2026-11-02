@@ -99,9 +99,11 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
     expect(res.headers.get('X-Total-Count')).toBe('1')
 
-    const text = await res.text()
-    expect(text).toContain('Date,User,Project,Type,Hours,Work Done')
-    expect(text).toContain('2026-08-30,user@vsis.lk,Project Alpha,Dev,7.5,Implemented privileged reports & export feature')
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    const text = new TextDecoder().decode(bytes)
+    expect(text).toContain('Date,User,Type,Project,Activity,Customer,Ticket Number,Other Activity,Hours,Work Done')
+    expect(text).toContain('2026-08-30,user@vsis.lk,Legacy,Project Alpha,Dev,,,,7.5,Implemented privileged reports & export feature')
   })
 
   it('allows leader to filter by team member', async () => {
@@ -184,7 +186,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
     expect(res.headers.get('Cache-Control')).toBe('no-store, no-cache, must-revalidate')
     expect(res.headers.get('X-Total-Count')).toBeNull()
-    expect(await res.text()).toContain('Date,User,Project,Type,Hours,Work Done')
+    expect(await res.text()).toContain('Date,User,Type,Project,Activity,Customer,Ticket Number,Other Activity,Hours,Work Done')
   })
 
   it('rejects invalid date format with 400', async () => {

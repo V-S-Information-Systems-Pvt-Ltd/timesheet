@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
-import { buildCsv, escapeCsvCell, parseCsv } from '../lib/csv'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildCsv, CSV_BOM, downloadCSV, escapeCsvCell, parseCsv } from '../lib/csv'
+
+describe('downloadCSV', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+  it('prefixes the downloaded file with a UTF-8 byte order mark', async () => {
+    vi.stubGlobal('document', { createElement: () => ({ click: vi.fn() }) })
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:csv')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    downloadCSV('report.csv', ['Note'], [['é']])
+    const blob = create.mock.calls[0][0] as Blob
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+  })
+})
 
 describe('escapeCsvCell', () => {
   it('leaves plain values untouched', () => {
@@ -67,6 +83,10 @@ describe('parseCsv', () => {
 
   it('handles CRLF line endings and drops the trailing empty row', () => {
     expect(parseCsv('a,b\r\nc,d\r\n')).toEqual([['a', 'b'], ['c', 'd']])
+  })
+
+  it('ignores a leading byte order mark', () => {
+    expect(parseCsv(`${CSV_BOM}Date,Hrs\n2024-01-01,8`)).toEqual([['Date', 'Hrs'], ['2024-01-01', '8']])
   })
 
   it('round-trips through buildCsv', () => {

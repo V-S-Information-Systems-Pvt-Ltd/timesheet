@@ -49,6 +49,18 @@ describe('selectRows', () => {
 describe('timesheetCsvRows', () => {
   it('maps rows to CSV cells with fallbacks', () => {
     const rows = [t({ projects: null, profiles: null })]
-    expect(timesheetCsvRows(rows)).toEqual([['2024-06-15', 'Unknown', 'Unknown', 'Unknown', 8, 'Did work', 'Legacy', 'Unknown', '', '']])
+    expect(timesheetCsvRows(rows)).toEqual([['2024-06-15', 'Unknown', 'Legacy', 'Unknown', '', '', '', '', 8, 'Did work']])
+  })
+  it('keeps the legacy activity type name under Activity', () => {
+    const rows = [t({ projects: { name: 'Alpha' }, profiles: null, activity_types: { name: 'Old R&D' } })]
+    expect(timesheetCsvRows(rows)[0].slice(2, 5)).toEqual(['Legacy', 'Alpha', 'Old R&D'])
+  })
+  it('leaves Project empty for no-project types and drops the type prefix from Activity', () => {
+    const rows = [t({ projects: null, entry_type: 'support', activity_code: 'customers', customer: 'Acme', ticket_number: '00-1' })]
+    expect(timesheetCsvRows(rows)[0].slice(2, 8)).toEqual(['Support', '', 'Customers', 'Acme', '00-1', ''])
+  })
+  it('emits only ASCII labels for a classified entry', () => {
+    const rows = [t({ projects: null, entry_type: 'internal', activity_code: 'other', activity_other: 'Audit' })]
+    expect(timesheetCsvRows(rows)[0].join('')).toMatch(/^[\x20-\x7e]*$/)
   })
 })
