@@ -3,8 +3,8 @@ import 'server-only'
 import { ENTRY_TYPE_LABELS, ACTIVITY_LABELS } from '@vsis/contracts'
 import { query } from '../pool'
 import { timesheetScope } from './visibility'
-import type { Actor, ReportBucket, ReportTotalsInput } from '../types'
-import type { ReportGroupBy, ReportingPersistence } from '@/lib/domain/reporting-port'
+import type { Actor, ReportBucket, ReportLeave, ReportTotalsInput } from '../types'
+import type { ReportGroupBy, ReportLeaveFilters, ReportingPersistence } from '@/lib/domain/reporting-port'
 
 /** The composition root supplies the canonical scoped list, without cross-domain imports. */
 export function createNativeReportingPersistence(
@@ -12,6 +12,32 @@ export function createNativeReportingPersistence(
 ): ReportingPersistence {
   return {
     listTimesheets,
+
+    async listLeaves(actor: Actor, filters: ReportLeaveFilters): Promise<ReportLeave[]> {
+      // Aliased `t` so a report shows the same people's leave as their timesheets.
+      const { where, params } = timesheetScope(actor)
+      const conds = [where.slice('where '.length)]
+      if (filters.userId) {
+        params.push(filters.userId)
+        conds.push(`t.user_id = $${params.length}`)
+      }
+      if (filters.dateFrom) {
+        params.push(filters.dateFrom)
+        conds.push(`t.leave_date >= $${params.length}`)
+      }
+      if (filters.dateTo) {
+        params.push(filters.dateTo)
+        conds.push(`t.leave_date <= $${params.length}`)
+      }
+      return query<ReportLeave>(
+        `select t.leave_date::text as leave_date, pr.email, t.reason
+         from public.leaves t
+         left join public.profiles pr on pr.id = t.user_id
+         where ${conds.join(' and ')}
+         order by t.leave_date desc, pr.email, t.id`,
+        params
+      )
+    },
 
     async getGroupedReportTotals(
       actor: Actor,

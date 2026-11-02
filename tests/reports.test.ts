@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtHours, selectRows, sumHours, timesheetCsvRows } from '../lib/reports'
+import { fmtHours, reportCsvRows, reportIncludesLeaves, selectRows, sumHours, timesheetCsvRows } from '../lib/reports'
 import type { Timesheet } from '../app/types'
 
 function t(over: Partial<Timesheet> = {}): Timesheet {
@@ -43,6 +43,30 @@ describe('selectRows', () => {
   })
   it('filters by project and user', () => {
     expect(selectRows(rows, '2024-06-01', '2024-06-30', 'p1', 'u1').map(r => r.id)).toEqual(['a', 'c'])
+  })
+})
+
+describe('reportCsvRows', () => {
+  const leave = (leave_date: string, reason = 'Sick') => ({ leave_date, email: 'a@b.c', reason })
+
+  it('writes leave as an entry with a standard day of hours and the reason', () => {
+    expect(reportCsvRows([], [leave('2024-06-14')])).toEqual([['2024-06-14', 'a@b.c', 'Leave', '', '', '', '', '', 8, 'Sick']])
+  })
+  it('merges leave into timesheet rows by date, newest first', () => {
+    const rows = [t({ id: 'a', log_date: '2024-06-15' }), t({ id: 'b', log_date: '2024-06-13' })]
+    const dates = reportCsvRows(rows, [leave('2024-06-16'), leave('2024-06-14'), leave('2024-06-12')]).map(r => [r[0], r[2]])
+    expect(dates).toEqual([
+      ['2024-06-16', 'Leave'], ['2024-06-15', 'Legacy'], ['2024-06-14', 'Leave'], ['2024-06-13', 'Legacy'], ['2024-06-12', 'Leave'],
+    ])
+  })
+  it('falls back to Unknown when the user has no email', () => {
+    expect(reportCsvRows([], [{ leave_date: '2024-06-14', email: null, reason: '' }])[0][1]).toBe('Unknown')
+  })
+  it('excludes leave under project, type and activity filters only', () => {
+    expect(reportIncludesLeaves({})).toBe(true)
+    expect(reportIncludesLeaves({ projectId: 'p1' })).toBe(false)
+    expect(reportIncludesLeaves({ entryType: 'support' })).toBe(false)
+    expect(reportIncludesLeaves({ activityCode: 'customers' })).toBe(false)
   })
 })
 

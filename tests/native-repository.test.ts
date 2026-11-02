@@ -463,6 +463,26 @@ describe('native repository work_done sanitization on bulk paths', () => {
   })
 })
 
+describe('native reporting listLeaves', () => {
+  it('limits an ordinary user to their own leave even when asking for someone else', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    await nativeReportingPersistence.listLeaves(user, { userId: 'someone-else', dateFrom: '2026-01-01', dateTo: '2026-01-31' })
+    const [sql, params] = mockQuery.mock.calls[0]
+    expect(sql).toContain('from public.leaves t')
+    expect(sql).toContain('t.user_id = $1 and t.user_id = $2')
+    expect(sql).toContain('order by t.leave_date desc')
+    expect(sql).not.toMatch(/\blimit\b/)
+    expect(params).toEqual([user.id, 'someone-else', '2026-01-01', '2026-01-31'])
+  })
+
+  it('keeps the visibility scope for an admin with no filters', async () => {
+    mockQuery.mockResolvedValueOnce([{ leave_date: '2026-01-02', email: 'a@b.c', reason: 'Sick' }])
+    const rows = await nativeReportingPersistence.listLeaves(admin, {})
+    expect(rows).toEqual([{ leave_date: '2026-01-02', email: 'a@b.c', reason: 'Sick' }])
+    expect(mockQuery.mock.calls[0][0]).toContain('where ')
+  })
+})
+
 describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
   it('aggregates by the requested groupBy in a single SQL query', async () => {
     mockQuery.mockResolvedValueOnce([
