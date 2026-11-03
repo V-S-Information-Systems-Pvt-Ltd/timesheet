@@ -1,5 +1,16 @@
 # Architecture Delta
 
+## 2026-11-02 — Leave rows in report exports
+
+- `/api/v1/reports/export` and the dashboard's Generate Reports now include leave as rows: `Type` is `Leave`, `Hours` is the standard 8-hour day, `Work Done` is the reason. `X-Total-Count` counts them. Project, type and activity filters exclude leave. Grouped totals are unchanged.
+- New `GET /api/v1/reports/leaves` (cookie or bearer; `user`, `from`, `to`) and `ReportingPersistence.listLeaves`. Unlike `/api/v1/leaves`, it uses `timesheetScope`, so leaders get their team's leave, and has no 1000-row cap.
+
+## 2026-11-02 — Timesheet CSV export layout
+
+- Columns are now `Date, User, Type, Project, Activity, Customer, Ticket Number, Other Activity, Hours, Work Done` for `/api/v1/reports/export` and the browser exports. `Type` is the entry type (or `Legacy`); the old legacy-activity `Type` and the `Entry Type` columns are gone.
+- `Project` is empty for Support/Internal entries, `Activity` no longer carries the type prefix, and all CSV downloads start with a UTF-8 BOM so Excel decodes them correctly.
+- CSV import prefers an `Activity` column over `Type` for the legacy activity type; files with only `Type` behave as before.
+
 ## 2026-11-01 — Brand colour contrast gate
 
 - `isAccessiblePrimaryColor` (used by `validateBranding`, so `PUT /api/v1/admin/branding`) now needs 4.5:1 white-on-primary instead of 3.0:1: button labels and avatar initials are 12–14px. The 1.8:1 dark-surface rule is unchanged.

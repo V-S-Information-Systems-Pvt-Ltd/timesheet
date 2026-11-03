@@ -9,6 +9,10 @@
  *  spreadsheet-injection guidance. */
 const FORMULA_PREFIX = /^[=+\-@\t\r]/
 
+/** Without a byte order mark Excel decodes UTF-8 downloads as the Windows code
+ *  page, turning any non-ASCII text into mojibake. Prefix whole files with it. */
+export const CSV_BOM = '﻿'
+
 export function escapeCsvCell(value: string | number): string {
   let s = String(value)
   if (FORMULA_PREFIX.test(s)) s = "'" + s
@@ -29,7 +33,7 @@ export function parseCsv(text: string): string[][] {
   let cell = ''
   let inQuotes = false
 
-  for (let i = 0; i < text.length; i++) {
+  for (let i = text.startsWith(CSV_BOM) ? 1 : 0; i < text.length; i++) {
     const ch = text[i]
     if (inQuotes) {
       if (ch === '"') {
@@ -76,6 +80,6 @@ function downloadBlob(filename: string, blob: Blob) {
 
 export function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
   const csv = buildCsv(headers, rows)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8;' })
   downloadBlob(filename, blob)
 }

@@ -16,6 +16,8 @@ const HEADER_ALIASES: Record<string, keyof CsvTimesheetRow> = {
   user: 'email',
   project: 'project',
   type: 'activityType',
+  // Listed after `type` so it wins in report exports, where Type is the entry type.
+  activity: 'activityType',
   hours: 'hours',
   'work done': 'workDone',
 }

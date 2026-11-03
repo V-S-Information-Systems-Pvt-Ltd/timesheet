@@ -2,7 +2,7 @@
 import type { Timesheet } from '@/app/types'
 import { ENTRY_TYPE_LABELS, activityDisplayLabel } from '@vsis/contracts'
 import type { ActivityCode, EntryType } from '@vsis/contracts'
-export { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports/csv-export'
+export { TIMESHEET_CSV_HEADERS, reportCsvRows, reportIncludesLeaves, timesheetCsvRows } from '@/lib/reports/csv-export'
 
 export function sumHours(rows: Timesheet[]): number {
   return rows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)

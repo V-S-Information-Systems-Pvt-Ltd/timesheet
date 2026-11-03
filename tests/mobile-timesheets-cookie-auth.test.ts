@@ -347,6 +347,7 @@ describe('versioned browser routes use explicit cookie opt-in', () => {
       join('reminders', 'global', 'route.ts'),
       join('reminders', 'route.ts'),
       join('reports', 'export', 'route.ts'),
+      join('reports', 'leaves', 'route.ts'),
       join('reports', 'route.ts'),
       join('settings', 'backfill', 'route.ts'),
       join('timesheets', 'route.ts'),
