@@ -9,13 +9,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { UserRole } from '@/app/types'
 import type { NavGroup } from '@/lib/navigation'
-import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
+import { isFormField, focusBySelector, setShortcutsEnabled, shortcutsEnabled, SHORTCUTS } from '@/lib/shortcuts'
 import { cn } from './cn'
 import { Dialog } from './dialog'
 import { MenuCustomizer, type MenuCustomizerConfig } from './menu-customizer'
 import { Menu } from './menu'
 import { useBranding } from './branding-provider'
-import { BrandMark, IconButton, RoleBadge, ThemeToggle, initialsOf } from './ui'
+import { BrandMark, Checkbox, IconButton, RoleBadge, ThemeToggle } from './ui'
+import { Monogram } from './workspace'
 import { IconChart, IconChevronDown, IconClock, IconDashboard, IconMenu, IconUsers, IconX } from './icons'
 
 const GROUP_ICONS: Record<NavGroup['key'], ReactNode> = {
@@ -32,6 +33,8 @@ function navigateInPlace(event: MouseEvent<HTMLAnchorElement>, href: string, pat
   if (path !== pathname || pathname !== '/dashboard') return false
   event.preventDefault()
   window.history.pushState(null, '', href)
+  // No page load, so move focus to the new panel; next frame, once a closing drawer stops making main inert.
+  requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }))
   return true
 }
 
@@ -225,7 +228,7 @@ export function AppShell({
         setDrawerOpen(false)
         return
       }
-      if (shortcutsOpen) return
+      if (shortcutsOpen || !shortcutsEnabled()) return
       let handled = false
       switch (key) {
         case 'n': handled = focusBySelector('[data-shortcut="time-entry-form"]'); break
@@ -279,7 +282,8 @@ export function AppShell({
         <button
           type="button"
           onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
-          className="flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          // Touch-only devices have no keyboard to use these with; the account menu still lists them.
+          className="pointer-coarse:hidden flex min-h-11 w-full items-center gap-3 rounded-full lg:min-h-9 px-3 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
         >
           <kbd className="rounded border border-line bg-muted px-1.5 text-xs">?</kbd>
           Keyboard shortcuts
@@ -368,17 +372,16 @@ export function AppShell({
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden sm:block"><ThemeToggle /></span>
             <Menu
-              label="Account menu"
+              // The name starts the accessible label so voice control can target what is on screen (WCAG 2.5.3).
+              label={`${displayName}, account menu`}
               items={accountItems}
               trigger={
                 <span className="flex items-center gap-2.5 px-1">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 font-display text-xs font-semibold text-white">
-                    {initialsOf(name, email)}
-                  </span>
+                  <Monogram name={name} email={email} tone="primary" size="sm" />
                   <span className="hidden text-left leading-tight md:block">
                     <span className="block max-w-[160px] truncate text-sm font-medium text-fg">{displayName}</span>
                     <span className="flex items-center gap-1.5">
-                      {department && <span className="max-w-[110px] truncate text-[11px] text-fg-muted">{department}</span>}
+                      {department && <span className="max-w-[110px] truncate text-xs text-fg-muted">{department}</span>}
                       <RoleBadge role={role} />
                     </span>
                   </span>
@@ -391,8 +394,9 @@ export function AppShell({
 
         <main
           id="main-content"
+          tabIndex={-1}
           className={cn(
-            'flex-1',
+            'flex-1 outline-none',
             centered
               ? 'flex items-center justify-center px-4 py-10'
               : 'w-full px-4 py-6 md:px-8 md:py-8'
@@ -436,6 +440,14 @@ export function AppShell({
                 </div>
               </div>
             ))}
+          </div>
+          <div className="border-t border-line px-5 py-2">
+            {/* Read on open: the dialog unmounts when closed. */}
+            <Checkbox
+              label="Use single-key shortcuts"
+              defaultChecked={shortcutsEnabled()}
+              onChange={(e) => setShortcutsEnabled(e.target.checked)}
+            />
           </div>
         </div>
       </Dialog>

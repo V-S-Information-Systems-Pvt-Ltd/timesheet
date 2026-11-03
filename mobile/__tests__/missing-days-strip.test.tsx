@@ -63,6 +63,21 @@ describe('MissingDaysStrip', () => {
     expect(root.findAllByProps({ accessibilityLabel: 'Friday 6 February: Missing, log time for this day' }).length).toBeGreaterThan(0);
   });
 
+  it('gives missing and leave days a non-colour cue: solid 2px ring vs dashed outline', async () => {
+    const listLeaves = jest.fn().mockResolvedValue([{ id: 'l1', user_id: 'u1', leave_date: '2026-02-03', reason: 'Sick' }]);
+    const listTimesheets = jest.fn().mockResolvedValue({ rows: [{ id: 't1', user_id: 'u1', log_date: '2026-02-02', hours_worked: 8 }] });
+    const { root } = await render({ listTimesheets, listLeaves });
+    const cell = (prefix: string) => {
+      const slot = root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith(prefix))[0];
+      const inner = slot.findAll(n => typeof n.type === 'string' && Array.isArray(n.props.style))[0];
+      return Object.assign({}, ...[inner.props.style].flat(Infinity).filter(Boolean));
+    };
+    expect(cell('Thursday 5 February')).toMatchObject({ borderWidth: 2 });
+    expect(cell('Thursday 5 February').borderStyle).toBeUndefined();
+    expect(cell('Tuesday 3 February')).toMatchObject({ borderStyle: 'dashed', borderWidth: 1 });
+    expect(cell('Monday 2 February')).toMatchObject({ borderColor: 'transparent' });
+  });
+
   it('renders nothing when the month cannot be loaded', async () => {
     const { renderer } = await render({ listTimesheets: jest.fn().mockRejectedValue(new Error('offline')) });
     expect(renderer.toJSON()).toBeNull();

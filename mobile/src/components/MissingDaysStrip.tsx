@@ -107,13 +107,15 @@ export function MissingDaysStrip({ userId, today, refreshKey, listTimesheets, li
       ? 'Nothing missing so far.'
       : `${missing} working day${missing === 1 ? '' : 's'} missing. Tap one to log it.`;
 
-  const look: Record<DayState, { bg?: string; fg: string; border?: string; bold?: boolean; dim?: boolean }> = {
+  // Each state has a non-colour cue too, matching the web ribbon:
+  // logged = fill, missing = solid 2px ring + bold, leave = dashed outline.
+  const look: Record<DayState, { bg?: string; fg: string; border?: string; ring?: 'solid' | 'dashed'; bold?: boolean; dim?: boolean }> = {
     holiday: { bg: palette.primary, fg: palette.onPrimary, bold: true },
-    leave: { bg: palette.leaveTint, fg: palette.leave },
+    leave: { bg: palette.leaveTint, fg: palette.leave, border: palette.leave, ring: 'dashed' },
     logged: { bg: palette.loggedTint, fg: palette.loggedText },
     weekend: { fg: palette.muted, dim: true },
     future: { fg: palette.muted },
-    missing: { bg: palette.missingTint, fg: palette.missingText, border: palette.missing, bold: true },
+    missing: { bg: palette.missingTint, fg: palette.missingText, border: palette.missingText, ring: 'solid', bold: true },
   };
 
   return (
@@ -134,6 +136,8 @@ export function MissingDaysStrip({ userId, today, refreshKey, listTimesheets, li
           const cellStyle = [
             styles.cell,
             { backgroundColor: s.bg ?? 'transparent', borderColor: s.border ?? 'transparent', opacity: s.dim ? 0.6 : 1 },
+            s.ring === 'solid' && styles.ringSolid,
+            s.ring === 'dashed' && styles.ringDashed,
             d.iso === today && [styles.today, { borderColor: palette.primary }],
           ];
           const inner = (
@@ -184,6 +188,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
+  ringSolid: { borderWidth: 2 },
+  ringDashed: { borderStyle: 'dashed' },
   today: { borderWidth: 2 },
   bold: { fontFamily: fonts.numeral, fontWeight: '600' },
   weekday: { fontSize: typography.badge, lineHeight: 13, opacity: 0.7 },

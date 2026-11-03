@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
-import { todayISO } from '@vsis/core'
+import { scopeProjects, todayISO } from '@vsis/core'
 import { createDashboardMonthTotals, type DashboardMonthTotalsState } from '@/lib/dashboard-month-totals'
 import { createTimesheetPageReader, entriesPageFromSearch, entriesPageQuery, mergePageOverlays, type TimesheetPageState } from '@/lib/dashboard-timesheets'
 import { insertOptimisticTimesheet, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
@@ -63,13 +63,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const initialScope = seed.session && seed.profile?.is_active
     ? dashboardPageScope(0, seed.session.id, seed.page) : ''
   const [initialPage] = useState<TimesheetPageState>(() => ({
-    scope: initialScope, rows: seed.entries.data?.rows ?? [], count: seed.entries.data?.count ?? null,
+    scope: initialScope, rows: seed.entries.data?.rows ?? [], count: seed.entries.data?.count ?? null, hours: seed.entries.data?.hours ?? null,
     loading: !seed.session, error: seed.entries.error,
   }))
   const router = useRouter()
   const [user, setUser] = useState<ClientSessionUser | null>(seed.session)
   const [profile, setProfile] = useState<User | null>(seed.profile)
-  const [projects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
+  const [allProjects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>((seed.activityTypes.data ?? []).filter(a => !a.entry_type))
   const [timesheets, setTimesheets] = useState<Timesheet[]>(initialPage.rows)
   const [pageState, setPageState] = useState<TimesheetPageState>(initialPage)
@@ -126,6 +126,11 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     setBusyTimesheetIds(new Set(mutationLocks))
   }, [mutationLocks, monthTotalsRequest, authEpoch])
   const searchParams = useSearchParams()
+  // Projects outside the viewer's department act as hidden for them: pickers
+  // drop them (an edit keeps its current one); names still resolve. The server
+  // enforces the same rule on writes. ProjectManager and backfill get the real rows.
+  const department = profile?.department
+  const projects = useMemo(() => scopeProjects(allProjects, department), [allProjects, department])
   const role = profile?.role ?? 'user'
   const permission = profile?.permission_role ?? 'user'
   const hierarchy = profile?.hierarchy_role ?? 'user'
@@ -491,6 +496,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         timesheets={displayedTimesheets}
         pagination={entriesPage}
         totalCount={pageState.scope === pageScope ? pageState.count : null}
+        totalHours={pageState.scope === pageScope ? pageState.hours ?? null : null}
         loading={pageState.scope !== pageScope || pageState.loading}
         readError={pageState.scope === pageScope ? pageState.error : null}
         scope={pageScope}
@@ -536,7 +542,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           backfill: (
             <BackfillForm
               allUsers={allUsers}
-              projects={projects}
+              projects={allProjects}
               activityTypes={activityTypes}
               onChanged={refreshTimesheetData}
             />
@@ -550,7 +556,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           backup: <BackupPanel onChanged={refreshTimesheetData} />,
         }
       : {}),
-    ...(canManageProjects ? { 'project-manager': <ProjectManager projects={projects} onChanged={fetchProjects} /> } : {}),
+    ...(canManageProjects ? { 'project-manager': <ProjectManager projects={allProjects} onChanged={fetchProjects} /> } : {}),
     ...(canGenerateReports
       ? { 'report-export': <ReportExport key={authEpoch} isSessionCurrent={isSessionCurrent} allUsers={allUsers} /> }
       : {}),
@@ -681,6 +687,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       customizer={customizer}
     >
       <div className={activeTab === 'team' || WIDE_PANELS.has(activePanel ?? '') ? undefined : 'max-w-4xl'}>
+      {/* Panels title themselves with card headings; the page still needs one top-level heading. */}
+      <h1 className="sr-only">{breadcrumb.filter(Boolean).join(': ')}</h1>
       {dataError && (
         <Alert tone="error" className="mb-6 flex items-start gap-2.5">
           <IconAlert className="mt-0.5 h-4.5 w-4.5 shrink-0" />
@@ -716,8 +724,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
                   const dot = <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
                   if (todayPresence.loading) return <span className={`${base} bg-muted text-fg-muted ring-line`}>Checking today…</span>
                   if (todayPresence.error) return <span className={`${base} bg-muted text-fg-muted ring-line`}>Today unavailable</span>
-                  if (todayPresence.logged) return <span className={`${base} bg-success-surface text-success-text ring-success-ring`}>{dot}Logged today</span>
-                  return <span className={`${base} bg-warning-surface text-warning-text ring-warning-ring`}>{dot}Not logged yet</span>
+                  if (todayPresence.logged) return <span className={`${base} bg-success-surface text-success-text ring-success-ring`}>{dot}Today: logged</span>
+                  return <span className={`${base} bg-warning-surface text-warning-text ring-warning-ring`}>{dot}Today: not logged</span>
                 })()}
               </div>
             </div>

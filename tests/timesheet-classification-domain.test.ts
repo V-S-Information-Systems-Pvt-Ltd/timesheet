@@ -46,6 +46,22 @@ describe('classification domain', () => {
     expect((await createTimesheetEntry(actor, input, deps)).ok).toBe(false)
     expect(persistence.create).not.toHaveBeenCalled()
   })
+  it('rejects a hidden or out-of-department project on create, checked for the target user', async () => {
+    const input = { ...base, entryType: 'project', activityCode: 'planning', projectId: 'p1' }
+    vi.mocked(persistence.projectEligibility).mockResolvedValue({ eligible: true, available: false })
+    expect(await createTimesheetEntry(actor, input, deps)).toMatchObject({ ok: false, error: { code: 'VALIDATION_ERROR', fieldErrors: { projectId: [expect.any(String)] } } })
+    expect(persistence.projectEligibility).toHaveBeenCalledWith(actor, 'p1', actor.id)
+    expect(persistence.create).not.toHaveBeenCalled()
+  })
+  it('lets an edit keep its stored project after it was hidden, but not switch to one', async () => {
+    const stored = { ...row, project_id: 'p1', entry_type: 'project' as const, activity_code: 'planning' as const, ticket_number: null, customer: null }
+    vi.mocked(persistence.getById).mockResolvedValue(stored)
+    vi.mocked(persistence.projectEligibility).mockResolvedValue({ eligible: true, available: false })
+    const edit = { ...base, entryType: 'project', activityCode: 'planning', projectId: 'p1', hoursWorked: 3 }
+    expect((await updateTimesheetEntry(actor, stored.id, edit, deps)).ok).toBe(true)
+    expect((await updateTimesheetEntry(actor, stored.id, { ...edit, projectId: 'p2' }, deps)).ok).toBe(false)
+    expect(persistence.update).toHaveBeenCalledTimes(1)
+  })
   it('keeps old edits legacy after activation and rejects reclassification', async () => {
     vi.mocked(persistence.getById).mockResolvedValue(old)
     expect((await updateTimesheetEntry(actor, old.id, legacy, deps)).ok).toBe(true)

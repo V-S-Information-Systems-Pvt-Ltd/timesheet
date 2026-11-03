@@ -81,7 +81,7 @@ export async function getDashboardSeed(search: URLSearchParams): Promise<Dashboa
     }, 'Could not load default layouts.'),
     settle(async () => {
       const result = unwrap(await listTimesheetsDomain(actor, { ...entriesPageQuery(seed.page), includeCount: true }, timesheetDeps()))
-      return { rows: result.rows.map(projectDashboardEntry), count: result.count }
+      return { rows: result.rows.map(projectDashboardEntry), count: result.count, hours: result.hours }
     }, 'Could not load entries.'),
     settle(async () => {
       const t = await getReportTotals(actor, { from: range.from, to: range.to }, 'user', reportingDeps())

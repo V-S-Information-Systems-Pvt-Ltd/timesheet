@@ -1,7 +1,7 @@
 // tests/backup.test.ts
 // Parser/validation tests for the admin Backup & Restore JSON format.
 import { describe, expect, it } from 'vitest'
-import { parseBackup } from '../lib/backup'
+import { MAX_TIMESHEETS, parseBackup } from '../lib/backup'
 import type { BackupPayload } from '../app/types'
 
 const validDoc = (): BackupPayload => ({
@@ -34,6 +34,14 @@ describe('parseBackup', () => {
     const result = parseBackup(doc)
     expect(result.ok && result.payload?.globalReminders.map(r => r.display_as_banner)).toEqual([true, false, false])
     expect(parseBackup({ ...doc, globalReminders: [{ ...doc.globalReminders[0], display_as_banner: 'true' }] }).ok).toBe(false)
+  })
+  it('keeps project visibility and drops blank or repeated departments', () => {
+    const doc = validDoc()
+    doc.projects = [{ name: 'Old', so_number: null, is_hidden: true, departments: [' Eng ', 'Eng', ''] }, { name: 'New', so_number: null }]
+    const projects = parseBackup(doc).payload?.projects
+    expect(projects?.[0]).toMatchObject({ is_hidden: true, departments: ['Eng'] })
+    expect(projects?.[1]).not.toHaveProperty('is_hidden')
+    expect(projects?.[1]).not.toHaveProperty('departments')
   })
   it('accepts a valid payload and normalizes emails/dates', () => {
     const res = parseBackup(validDoc())
@@ -93,7 +101,7 @@ describe('parseBackup', () => {
 
   it('rejects oversized backups', () => {
     const doc = validDoc()
-    for (let i = 0; i < 5001; i++) {
+    for (let i = 0; i <= MAX_TIMESHEETS; i++) {
       doc.timesheets.push({
         email: `u${i}@x.com`,
         log_date: '2026-08-19',

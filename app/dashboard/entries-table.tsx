@@ -5,7 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { dataClient } from '@/lib/data/client'
 import { readTimesheetHistory, selectedSnapshotRows, type EntriesPage } from '@/lib/dashboard-timesheets'
 import { addDaysISO } from '@vsis/core'
-import { isFormField } from '@/lib/shortcuts'
+import { isFormField, shortcutsEnabled } from '@/lib/shortcuts'
 import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Input, LoadingState, Menu, Select, Spinner, Td, Th } from '@/app/components/ui'
@@ -27,6 +27,7 @@ export default function EntriesTable({
   userId,
   pagination,
   totalCount,
+  totalHours = null,
   loading,
   readError,
   scope,
@@ -53,6 +54,8 @@ export default function EntriesTable({
   userId?: string
   pagination: EntriesPage
   totalCount: number | null
+  /** Hours of the selected user, or of the current user when unfiltered. */
+  totalHours?: number | null
   loading: boolean
   readError: string | null
   scope: string
@@ -664,7 +667,7 @@ export default function EntriesTable({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.altKey || e.ctrlKey) return
+      if (e.metaKey || e.altKey || e.ctrlKey || !shortcutsEnabled()) return
       if (document.querySelector('[data-shortcuts-modal]')) return
       // Never fire table shortcuts underneath a modal (bulk edit, confirm).
       if (Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
@@ -684,13 +687,11 @@ export default function EntriesTable({
   return (
     <Card
       title={canFilterByUser ? 'Recent Entries' : 'My Recent Entries'}
-      subtitle={
-        canFilterByUser && userFilter
-          ? `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'} · ${
-              users.find(u => u.id === userFilter)?.name || 'selected user'
-            }`
-          : `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'}`
-      }
+      subtitle={[
+        `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'}`,
+        totalHours !== null && `${canFilterByUser && !userFilter ? 'You: ' : ''}${Number(totalHours.toFixed(2))} h logged`,
+        canFilterByUser && userFilter && (users.find(u => u.id === userFilter)?.name || 'selected user'),
+      ].filter(Boolean).join(' · ')}
       icon={<IconDocument className="h-4.5 w-4.5" />}
        bodyClassName="p-0"
        collapsible={collapsible}
@@ -755,7 +756,7 @@ export default function EntriesTable({
               )}
             </div>
             </div>
-          <div className="max-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
+          <div className="max-h-[calc(100dvh-14rem)] min-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
           {loading && <LoadingState label="Loading entries…" />}
           {!loading && !readError && timesheets.length === 0 && <EmptyState className="m-5" icon={<IconClock className="h-5 w-5" />} title="No entries found" description="Try another user filter or log an entry." />}
            <table className="w-full text-sm">
@@ -852,7 +853,7 @@ export default function EntriesTable({
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                         <Td className="whitespace-nowrap text-fg-muted">{users.find(u => u.id === t.user_id)?.name || t.profiles?.name || t.profiles?.email || '—'}</Td>
-                        <Td className="font-medium text-fg">{t.projects?.name || (t.entry_type ? 'No project' : '—')}</Td>
+                        <Td className="min-w-48 font-medium text-fg"><div className="line-clamp-2" title={t.projects?.name}>{t.projects?.name || (t.entry_type ? 'No project' : '—')}</div></Td>
                         <Td className="text-fg-muted">
                           {t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code, t.activity_label) : `Legacy · ${t.activity_types?.name || '—'}`}
                           {t.ticket_number && <div className="text-xs">Ticket Number: {t.ticket_number}</div>}
@@ -860,11 +861,12 @@ export default function EntriesTable({
                           {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
                         </Td>
                         <Td className="text-right font-numeral text-base font-medium tabular-nums">{t.hours_worked}</Td>
-                        <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
+                        <Td className="max-w-60 truncate text-fg-muted"><span title={t.work_done}>{t.work_done}</span></Td>
                         <Td className="text-right relative">
                           {canDuplicateRow(t) ? (
                             <div className="inline-flex items-center gap-1">
-                              <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                              {/* Always visible: hover-only actions read as an empty column and hide what a row can do. */}
+                              <div className="hidden md:flex md:items-center md:gap-1">
                                 <IconButton label="Edit" size="sm" tone="primary" className="min-h-9 min-w-9" onClick={() => startEdit(t)} disabled={!canEdit || rowBusyIds.has(t.id)}>
                                   <IconPencil className="h-3.5 w-3.5" />
                                 </IconButton>

@@ -1039,7 +1039,7 @@ export function TimesheetListScreen({
                   Could not load timesheets
                 </Text>
                 {error ? (
-                  <Text style={[styles.loadErrorText, { color: palette.muted }]}>{error}</Text>
+                  <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[styles.loadErrorText, { color: palette.muted }]}>{error}</Text>
                 ) : null}
                 <PressableScale
                   accessibilityLabel="Retry loading timesheets"

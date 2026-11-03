@@ -25,6 +25,7 @@ export default function LeavePanel({
   const [to, setTo] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   // Admin-only state
   const [targetUser, setTargetUser] = useState('')
@@ -92,7 +93,9 @@ export default function LeavePanel({
       setError('Invalid range.')
       return
     }
+    setSaving(true)
     const { error } = await dataClient.insertLeaves(rows)
+    setSaving(false)
     if (error) {
       toast(error, 'error')
     } else {
@@ -144,9 +147,9 @@ export default function LeavePanel({
         <Field label="Reason (optional)" className="sm:col-span-2">
           <Input type="text" placeholder="e.g. Medical leave" value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
-        <Button type="submit" className="sm:col-span-2">
+        <Button type="submit" className="sm:col-span-2" disabled={saving}>
           <IconCalendar className="h-4 w-4" />
-          {variant === 'admin' ? 'Set Leave' : 'Mark Leave'}
+          {saving ? 'Saving…' : variant === 'admin' ? 'Set Leave' : 'Mark Leave'}
         </Button>
       </form>
 

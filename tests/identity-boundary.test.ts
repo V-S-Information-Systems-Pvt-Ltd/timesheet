@@ -110,6 +110,25 @@ describe('identity service uses explicit injected ports', () => {
     expect(deps.sessions.create).not.toHaveBeenCalled()
   })
 
+  it('login refuses when the password changed between verification and session creation', async () => {
+    const deps = {
+      credentials: { verifyCredentials: vi.fn(async () => ({ user: principal, error: null, sessionVersion: 3 })) },
+      sessions: { create: vi.fn(async () => null) },
+      tokens: {
+        generateRefreshToken: vi.fn(() => 'refresh-raw'),
+        hashRefreshToken: vi.fn((token: string) => `hash:${token}`),
+        signMobileAccessToken: vi.fn(),
+      },
+      actors: { resolve: vi.fn() },
+    } as unknown as LoginIdentityDeps
+
+    const outcome = await loginMobileIdentity({ email: 'u@example.com', password: 'old' }, deps)
+
+    expect(outcome).toEqual({ ok: false, code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' })
+    expect(deps.sessions.create).toHaveBeenCalledWith(expect.objectContaining({ expectedSessionVersion: 3 }))
+    expect(deps.tokens.signMobileAccessToken).not.toHaveBeenCalled()
+  })
+
   it('refresh rotates atomically and maps reuse to REFRESH_TOKEN_REUSED', async () => {
     const rotate = vi.fn(
       async (): Promise<

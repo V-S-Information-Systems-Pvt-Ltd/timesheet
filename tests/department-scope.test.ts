@@ -109,4 +109,27 @@ describe('unrestricted admin', () => {
     expect((await reference.deleteDepartment(orgAdmin, 'd-1')).error).toMatch(/2 member/)
     expect(client.query).not.toHaveBeenCalledWith('delete from public.departments where id = $1', ['d-1'])
   })
+
+  it('refuses to delete a department a project is limited to', async () => {
+    db()
+    const client = { query: vi.fn(async (sql: string) =>
+      sql.includes('for update') ? { rows: [{ name: 'Engineering', members: 0 }] }
+        : sql.includes('from public.projects') ? { rows: [{ n: 1 }] } : { rows: [{ n: 0 }] }) }
+    transaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client))
+    expect((await reference.deleteDepartment(orgAdmin, 'd-1')).error).toMatch(/project departments/)
+    expect(client.query).not.toHaveBeenCalledWith('delete from public.departments where id = $1', ['d-1'])
+  })
+
+  it('carries a department rename into project scopes', async () => {
+    db()
+    const client = { query: vi.fn(async () => ({ rows: [{ name: 'Eng' }] })) }
+    transaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client))
+    expect(await reference.renameDepartment(orgAdmin, 'd-1', 'Engineering')).toEqual({ error: null })
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('update public.projects set departments = array_replace'), ['Engineering', 'Eng'])
+  })
+
+  it('accepts only listed departments for a project scope', async () => {
+    db({ known: ['Engineering'] })
+    expect((await reference.setProjectDepartments(orgAdmin, 'p-1', ['Nope'])).error).toMatch(/departments from the list/)
+  })
 })

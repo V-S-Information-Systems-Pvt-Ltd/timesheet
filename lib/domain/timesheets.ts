@@ -167,12 +167,16 @@ async function buildNewWrite(
     return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Activity is not valid for this type.', fieldErrors: { activityCode: ['Activity is not valid for this type.'] } } }
   }
   if (cls.entryType === 'project') {
-    const eligibility = await deps.persistence.projectEligibility(actor, cls.projectId!)
+    const eligibility = await deps.persistence.projectEligibility(actor, cls.projectId!, storedRow?.user_id ?? input.userId ?? actor.id)
     if (!eligibility) {
       return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Selected project was not found.' } }
     }
     if (!eligibility.eligible) {
       return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'This project cannot be used for timesheet entries.' } }
+    }
+    // An edit may keep its stored project after it was hidden or rescoped.
+    if (eligibility.available === false && storedRow?.project_id !== cls.projectId) {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'This project is hidden or not open to this department.', fieldErrors: { projectId: ['This project is hidden or not open to this department.'] } } }
     }
   }
   return {

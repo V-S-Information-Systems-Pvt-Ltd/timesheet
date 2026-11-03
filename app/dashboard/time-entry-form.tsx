@@ -227,20 +227,13 @@ function LocalTimeEntryForm({
               required
             />
             {splitPreview && <p id="hours-split-hint" className="mt-1 text-xs text-fg-muted">{splitPreview}</p>}
-            {lastEntry && !hours && (
-              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 inline-flex min-h-11 items-center text-xs text-primary-text hover:underline md:min-h-0">
-                Use {lastEntry.hours_worked}h from last entry
+            {smartHours !== null && !hours && (
+              <button type="button" onClick={handleQuickFillHours} className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-primary-text hover:underline md:min-h-0">
+                Quick-fill {smartHours}h
               </button>
             )}
           </Field>
         </div>
-        {smartHours !== null && !hours && (
-          <div>
-            <Button type="button" variant="secondary" size="sm" onClick={handleQuickFillHours}>
-              Quick-fill {smartHours}h
-            </Button>
-          </div>
-        )}
         <Field label="Work Done" error={fieldError('workDone')}>
           <Autocomplete
             options={recentWork.map(w => w.text)}

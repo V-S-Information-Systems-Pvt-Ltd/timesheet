@@ -255,7 +255,7 @@ export function DateChooserModal({
               </View>
 
               {validationError ? (
-                <Text style={[styles.errorText, { color: palette.error }]}>{validationError}</Text>
+                <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[styles.errorText, { color: palette.error }]}>{validationError}</Text>
               ) : (
                 <Text style={[styles.previewText, { color: palette.muted }]}>
                   {previewLabel}{' '}

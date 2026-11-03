@@ -1,7 +1,7 @@
 'use client'
 
 import { useId } from 'react'
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { fmtHours } from '@/lib/reports'
 import type { HoursPoint } from './chart-data'
 import { EmptyState } from './ui'
@@ -48,25 +48,26 @@ export function BarChartCard({ title, data, description }: HoursChartProps) {
   )
 }
 
+/** Daily totals as columns on a category axis: days without entries are
+ *  simply absent, never interpolated across as a line would. */
 export function TrendChart({ title, data, description }: HoursChartProps) {
   const titleId = useId()
-  const points = data.map(point => ({ ...point, date: Date.parse(`${point.label}T00:00:00Z`) }))
   if (!data.length) return <EmptyState title="No logged dates to plot" />
   return (
     <figure className="min-w-0" aria-labelledby={titleId}>
       <figcaption id={titleId} className="mb-3 text-sm font-medium text-fg">{title}</figcaption>
       <div className="hours-chart h-56">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <LineChart data={points} margin={{ top: 12, right: 24, bottom: 8, left: 0 }} accessibilityLayer>
+          <BarChart data={data} margin={{ top: 12, right: 24, bottom: 8, left: 0 }} accessibilityLayer>
             <CartesianGrid vertical={false} stroke="var(--border)" />
-            <XAxis type="number" dataKey="date" scale="time" domain={['dataMin', 'dataMax']} tick={AXIS_TICK} tickLine={false} axisLine={false} minTickGap={30} tickFormatter={(date: number) => new Date(date).toISOString().slice(5, 10)} />
+            <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} minTickGap={12} tickFormatter={(label: string) => label.slice(5)} />
             <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} unit=" h" />
-            <Tooltip cursor={{ stroke: 'var(--fg-subtle)' }} contentStyle={TOOLTIP_STYLE} itemStyle={{ color: 'var(--fg)' }} labelFormatter={(date) => new Date(Number(date)).toISOString().slice(0, 10)} formatter={(value) => [`${fmtHours(Number(value))} hrs`, 'Hours']} />
-            <Line type="linear" dataKey="hours" name="Hours" stroke="var(--chart-hours)" strokeWidth={2} dot={{ r: 4, fill: 'var(--chart-hours)', stroke: 'var(--card)', strokeWidth: 2 }} activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }} isAnimationActive={false} />
-          </LineChart>
+            <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={TOOLTIP_STYLE} itemStyle={{ color: 'var(--fg)' }} formatter={(value) => [`${fmtHours(Number(value))} hrs`, 'Hours']} />
+            <Bar dataKey="hours" name="Hours" fill="var(--chart-hours)" maxBarSize={28} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-xs text-fg-muted">{description} Only dates with loaded entries are plotted; gaps are not zero-hour days.</p>
+      <p className="mt-2 text-xs text-fg-muted">{description} Only dates with loaded entries are shown.</p>
       <details className="mt-3 text-xs text-fg-muted">
         <summary className="cursor-pointer font-medium">Daily totals table</summary>
         <div className="mt-2 max-h-56 overflow-auto">

@@ -73,6 +73,8 @@ describe('backend-neutral data client', () => {
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'Beta' }) }))
     await dataClient.setProjectSO(id, '')
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ soNumber: '' }) }))
+    await dataClient.setProjectScope(id, { hidden: true, departments: ['Eng'] })
+    expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ hidden: true, departments: ['Eng'] }) }))
     await dataClient.deleteProject(id)
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'DELETE' }))
   })

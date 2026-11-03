@@ -410,6 +410,8 @@ export interface TimesheetListResult {
   rows: TimesheetEntry[]
   count?: number
   total?: number
+  /** Hours of the filtered user, or of the caller when unfiltered. */
+  hours?: number
 }
 
 /** Per-item outcome of a batch delete. */

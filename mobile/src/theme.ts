@@ -11,7 +11,8 @@ export const colors = {
   muted: '#55657E',
   border: '#E1E7EF',
   hairline: '#E1E7EF',
-  controlBorder: '#C9D3E0',
+  // Control edges need 3:1 non-text contrast on sheet and paper (WCAG 1.4.11); hairlines stay light.
+  controlBorder: '#7D8CA3',
   subtle: '#A3AEBE',
   primary: '#1E73BE',
   primaryDark: '#185B98',
@@ -36,7 +37,7 @@ export const colors = {
   darkMuted: '#9AA8BD',
   darkCard: '#16243B',
   darkBorder: '#24344F',
-  darkControlBorder: '#3A4C6B',
+  darkControlBorder: '#647AA0',
   darkPlaceholder: '#9AA8BD',
   placeholder: '#667589',
   error: '#C8232A',

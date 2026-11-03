@@ -13,6 +13,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
   const [message, setMessage] = useState('')
   const [remindAt, setRemindAt] = useState('')
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   // Reminders load on mount and refresh after mutations.
   const { data: reminders, error: loadError, loading, reload: reloadReminders } = useAsyncData<Reminder[]>(
@@ -31,11 +32,13 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       setError('Message and time are required.')
       return
     }
+    setSaving(true)
     const { error } = await dataClient.insertReminder({
       userId,
       message: message.trim(),
       remindAt: new Date(remindAt).toISOString(),
     })
+    setSaving(false)
     if (error) {
       setError(error)
       toast(error, 'error')
@@ -117,8 +120,8 @@ export default function RemindersPanel({ userId }: { userId: string }) {
               required
             />
           </Field>
-          <Button type="submit">
-            <IconPlus className="h-4 w-4" /> Set Reminder
+          <Button type="submit" disabled={saving}>
+            <IconPlus className="h-4 w-4" /> {saving ? 'Saving…' : 'Set Reminder'}
           </Button>
         </div>
       </form>

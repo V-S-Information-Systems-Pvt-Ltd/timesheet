@@ -28,7 +28,7 @@ export interface IdentityCredentialPort {
   verifyCredentials(
     email: string,
     password: string
-  ): Promise<{ user: SessionUser | null; error: string | null }>
+  ): Promise<{ user: SessionUser | null; error: string | null; sessionVersion?: number }>
 }
 
 /** Resolve the current actor (role axes + active flag) for a principal. */
@@ -38,7 +38,7 @@ export interface IdentityActorPort {
 
 /** Application session (mobile refresh-session) lifecycle. */
 export interface IdentitySessionPort {
-  create(input: CreateMobileSessionInput): Promise<MobileSession>
+  create(input: CreateMobileSessionInput): Promise<MobileSession | null>
   rotate(input: RotateMobileSessionInput): Promise<RotateMobileSessionResult>
   revokeSession(id: string): Promise<void>
   revokeAll(userId: string): Promise<void>

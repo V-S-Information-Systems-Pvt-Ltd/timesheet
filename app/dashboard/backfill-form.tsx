@@ -1,13 +1,13 @@
 // app/dashboard/backfill-form.tsx
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { ActivityType, Project, User } from '../types'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar } from '@/app/components/icons'
-import { addDaysISO, todayISO } from '@vsis/core'
+import { addDaysISO, scopeProjects, todayISO } from '@vsis/core'
 import ClassificationFields, { classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
 
 export default function BackfillForm({
@@ -26,6 +26,9 @@ export default function BackfillForm({
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
   const [busy, setBusy] = useState(false)
+  // The picker follows the chosen user's department, as the server does.
+  const department = allUsers.find(u => u.id === userId)?.department
+  const userProjects = useMemo(() => scopeProjects(projects, department), [projects, department])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,7 +67,7 @@ export default function BackfillForm({
             {allUsers.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
           </Select>
         </Field>
-        <ClassificationFields projects={projects} value={classification} fieldErrors={fieldErrors} idPrefix="backfill" onChange={value => { setClassification(value); setFieldErrors({}) }} />
+        <ClassificationFields projects={userProjects} value={classification} fieldErrors={fieldErrors} idPrefix="backfill" onChange={value => { setClassification(value); setFieldErrors({}) }} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Hours" error={fieldErrors.hoursWorked?.[0]}>
             <Input type="number" step="0.25" min="0" max="24" placeholder="8.0" value={hours} onChange={(e) => setHours(e.target.value)} required />

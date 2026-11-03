@@ -386,7 +386,7 @@ export default function SuperAdminPanel({
                         ) : (
                           <Badge tone="amber">Pending Approval</Badge>
                         )}
-                        <span className="text-[11px] text-fg-muted hover:text-fg underline ml-1">
+                        <span className="text-xs text-fg-muted hover:text-fg underline ml-1">
                           (click to toggle)
                         </span>
                       </button>

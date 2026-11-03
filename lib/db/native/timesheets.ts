@@ -138,12 +138,17 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     }
 
     let count = 0
+    let hours = 0
     if (opts.includeCount !== false) {
-      const countRows = await query<{ c: number }>(
-        `select count(*)::int as c from public.timesheets t ${where}`,
-        [...baseParams, ...filterParams]
+      // Hours belong to the filtered user, or to the actor when unfiltered,
+      // and stay inside the actor-scoped where clause.
+      const countParams = [...baseParams, ...filterParams, opts.userId ?? actor.id]
+      const countRows = await query<{ c: number; h: number }>(
+        `select count(*)::int as c, coalesce(sum(t.hours_worked) filter (where t.user_id = $${countParams.length}), 0)::float8 as h from public.timesheets t ${where}`,
+        countParams
       )
       count = countRows[0]?.c ?? 0
+      hours = countRows[0]?.h ?? 0
     }
 
     let sql = `${SELECT_JOINED}
@@ -163,7 +168,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     }
 
     const rows = await query<TimesheetJoinedRow>(sql, params)
-    return { rows: rows.map(mapTimesheet), count }
+    return { rows: rows.map(mapTimesheet), count, hours }
   },
 
   async getBackfillWindow(_actor: Actor): Promise<BackfillSettings> {
@@ -238,14 +243,17 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     return rows[0]?.c ?? 0
   },
 
-  async projectEligibility(_actor: Actor, projectId: string): Promise<{ eligible: boolean } | null> {
+  async projectEligibility(actor: Actor, projectId: string, userId?: string): Promise<{ eligible: boolean; available: boolean } | null> {
     const normalized = normalizePostgresUuid(projectId)
     if (!normalized) return null
-    const rows = await query<{ is_timesheet_project: boolean }>(
-      'select is_timesheet_project from public.projects where id = $1 limit 1',
-      [normalized]
+    const rows = await query<{ is_timesheet_project: boolean; available: boolean }>(
+      `select p.is_timesheet_project,
+         not p.is_hidden and (coalesce(cardinality(p.departments), 0) = 0
+           or exists (select 1 from public.profiles u where u.id = $2 and u.department = any(p.departments))) as available
+       from public.projects p where p.id = $1 limit 1`,
+      [normalized, userId ?? actor.id]
     )
-    return rows[0] ? { eligible: rows[0].is_timesheet_project === true } : null
+    return rows[0] ? { eligible: rows[0].is_timesheet_project === true, available: rows[0].available === true } : null
   },
 
   async activityExists(_actor: Actor, entryType: string, code: string): Promise<boolean> {

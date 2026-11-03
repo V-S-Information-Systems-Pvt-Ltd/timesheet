@@ -57,6 +57,7 @@ export interface TimesheetPageState {
   scope: string
   rows: Timesheet[]
   count: number | null
+  hours?: number | null
   loading: boolean
   error: string | null
 }
@@ -90,7 +91,7 @@ export function createTimesheetPageReader(read: TimesheetRead, publish: (state: 
         emit({ ...state, loading: false, error: result.error || 'Could not refresh entries.' })
         return false
       }
-      emit({ scope, rows: result.data, count: result.count, loading: false, error: null })
+      emit({ scope, rows: result.data, count: result.count, hours: result.hours, loading: false, error: null })
       return true
     },
   }

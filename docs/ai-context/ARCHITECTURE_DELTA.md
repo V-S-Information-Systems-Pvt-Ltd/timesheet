@@ -11,6 +11,28 @@
 - `Project` is empty for Support/Internal entries, `Activity` no longer carries the type prefix, and all CSV downloads start with a UTF-8 BOM so Excel decodes them correctly.
 - CSV import prefers an `Activity` column over `Type` for the legacy activity type; files with only `Type` behave as before.
 
+## 2026-11-01 — Brand colour contrast gate
+
+- `isAccessiblePrimaryColor` (used by `validateBranding`, so `PUT /api/v1/admin/branding`) now needs 4.5:1 white-on-primary instead of 3.0:1: button labels and avatar initials are 12–14px. The 1.8:1 dark-surface rule is unchanged.
+- Only writes are checked; a colour saved under the old 3:1 gate still renders until an admin changes it.
+
+## 2026-11-01 — Project visibility and entry hours
+
+- Migration `0046_project_visibility.sql`: `projects.is_hidden boolean not null default false` and `projects.departments text[]` (null/empty = every department).
+- `ProjectDto` gains optional `is_hidden` / `departments` (sent only when set). `PATCH /api/v1/admin/projects/[id]` accepts `hidden` (boolean) and `departments` (string[], validated against `departments`).
+- `ReferencePersistence` adds `setProjectHidden` / `setProjectDepartments`. Department rename carries into project scopes; delete is refused while a project is limited to it.
+- Writes: `projectEligibility(actor, projectId, userId?)` also returns `available`; a new or changed Project entry on a hidden or out-of-department project (target user's department) is a `VALIDATION_ERROR`. An edit keeping its stored project is allowed.
+- `GET /api/v1/timesheets` (with count) returns `hours`: the filtered user's hours, or the caller's when unfiltered, summed inside the actor-scoped `where`.
+- Backup projects carry optional `is_hidden` / `departments` (still version 2); restore keeps only departments the target database lists.
+- `@vsis/core` `scopeProjects(projects, department)` marks closed projects hidden for web and mobile pickers; web backfill scopes by the chosen user's department.
+
+## 2026-10-28 — Auth and backup review fixes
+
+- `IdentitySessionPort.create` returns `MobileSession | null`. With `expectedSessionVersion` (passed by mobile login from `signIn`) the insert is conditional on `profiles.session_version` under `FOR SHARE`; `null` means a reset/change committed after verification and login returns `INVALID_CREDENTIALS`.
+- Legacy-hash upgrade on sign-in is conditional on the hash it verified, so it cannot overwrite a concurrent reset.
+- `replacePassword` locks `mobile_sessions` before the profile, matching `changePassword` and refresh rotation.
+- Backup: the timesheet dedup key adds `customer` and stored `work_done`; export hides test users from non-super admins via `visibleUserClause`; restore row caps raised to 100k timesheets / 200k rows so the 20 MB body cap is the limit.
+
 ## 2026-10-23 — Admin password reset
 
 - New `POST /api/v1/admin/users/[id]/password-reset` (cookie or bearer, `Cache-Control: no-store`), body `{ mode: 'email' | 'generate' }`. `email` sends the standard reset link (502 `EMAIL_FAILED` if delivery fails); `generate` sets a random 16-character password and returns it once.

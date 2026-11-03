@@ -247,7 +247,7 @@ export function DepartmentAdminScreen({ isDarkMode: _isDarkMode, onBack }: Depar
             <Text style={[adminStyles.modalTitle, { color: palette.foreground }]}>
               {editing ? 'Rename department' : 'New department'}
             </Text>
-            {formError ? <Text style={[adminStyles.modalError, { color: palette.error }]}>{formError}</Text> : null}
+            {formError ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[adminStyles.modalError, { color: palette.error }]}>{formError}</Text> : null}
 
             <Text style={[adminStyles.label, { color: palette.muted }]}>Department name</Text>
             <TextInput

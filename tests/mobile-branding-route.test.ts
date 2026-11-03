@@ -121,7 +121,7 @@ describe('workspace branding endpoints', () => {
     mockGetBranding.mockResolvedValueOnce({
       data: {
         appName: 'Acme Corp',
-        primaryColor: '#0D9488',
+        primaryColor: '#0F766E',
         logoUrl: 'https://example.com/logo.png',
       },
       error: null,
@@ -132,7 +132,7 @@ describe('workspace branding endpoints', () => {
 
     expect(json.data.branding).toEqual({
       appName: 'Acme Corp',
-      primaryColor: '#0D9488',
+      primaryColor: '#0F766E',
       logoUrl: 'https://example.com/logo.png',
     })
   })
@@ -149,7 +149,7 @@ describe('workspace branding endpoints', () => {
 
       const newBranding: WorkspaceBranding = {
         appName: 'VSIS Timesheet',
-        primaryColor: '#EA2B32',
+        primaryColor: '#CF1F26',
         logoUrl: 'https://vsis.lk/logo.png',
       }
       mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor, requestId: 'req-2' })

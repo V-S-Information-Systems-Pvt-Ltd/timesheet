@@ -74,6 +74,8 @@ describe('domain adapter contracts', () => {
       'renameDepartment',
       'renameProject',
       'setActivityTypeActive',
+      'setProjectDepartments',
+      'setProjectHidden',
       'setProjectSO',
       'updateWhitelistedDomain',
     ])
